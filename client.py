@@ -27,6 +27,10 @@ class SpendLimitExceeded(SurpError):
     pass
 
 
+class InvalidCombo(SurpError):
+    pass
+
+
 @dataclass
 class Response:
     status: int
@@ -102,6 +106,29 @@ class SurpClient:
 
     def stats(self):
         body, _ = self._call("GET", "/api/stats")
+        return body
+
+    def create_combo(self, *, name: str, models: list[str]):
+        clean_name = str(name or "").strip()
+        clean_models = [str(model).strip().lower() for model in (models or []) if str(model).strip()]
+        if len(clean_models) < 2 or len(clean_models) > 20:
+            raise InvalidCombo("A custom combo requires 2 to 20 model ids")
+        if len(set(clean_models)) != len(clean_models):
+            raise InvalidCombo("Custom combo model ids must be unique")
+        if len(clean_name) > 80:
+            raise InvalidCombo("Custom combo name must be 80 characters or fewer")
+        body, _ = self._call("POST", "/api/combos/custom", data={"name": clean_name, "models": clean_models})
+        return body
+
+    def custom_combos(self):
+        body, _ = self._call("GET", "/api/combos/custom")
+        return body
+
+    def custom_combo(self, slug: str):
+        clean = str(slug or "").strip().lower()
+        if not clean or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for ch in clean):
+            raise InvalidCombo("Invalid custom combo slug")
+        body, _ = self._call("GET", f"/api/combos/custom/{clean}")
         return body
 
     def usage(self):

@@ -1,5 +1,5 @@
 name: surp-hermes-x402-llm
-version: 0.1.0
+version: 0.2.0
 manifest_version: 2
 api_version: 1
 description: "Cache-aware Surp LLM routing for Hermes — live models, quotes, cache status, guarded paid chat, and usage."
@@ -32,5 +32,8 @@ provides_tools:
   - surp_cache_status
   - surp_chat
   - surp_usage
+  - surp_combo_create
+  - surp_combo_list
+  - surp_combo_get
 provides_skills:
   - surp

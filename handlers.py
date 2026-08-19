@@ -101,3 +101,20 @@ def surp_chat_handler(args, **kwargs):
 
 def surp_usage_handler(args, **kwargs):
     return _run(lambda: {"ok": True, **make_client().usage()})
+
+
+def surp_combo_create_handler(args, **kwargs):
+    args = args or {}
+    return _run(lambda: {
+        "ok": True,
+        **make_client().create_combo(name=args.get("name", ""), models=args.get("models", [])),
+    })
+
+
+def surp_combo_list_handler(args, **kwargs):
+    return _run(lambda: {"ok": True, **make_client().custom_combos()})
+
+
+def surp_combo_get_handler(args, **kwargs):
+    args = args or {}
+    return _run(lambda: {"ok": True, **make_client().custom_combo(args.get("slug", ""))})

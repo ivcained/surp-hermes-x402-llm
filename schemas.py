@@ -69,3 +69,26 @@ SURP_USAGE = schema(
     "Read balance and usage for the configured SURP_API_KEY. Read-only; never returns the key itself.",
     {},
 )
+
+SURP_COMBO_CREATE = schema(
+    "surp_combo_create",
+    "Create or reuse a public custom Surp combo from 2 to 20 concrete model ids. It dynamically routes to the cheapest available member. Creating it does not spend money.",
+    {
+        "name": {"type": "string", "maxLength": 80},
+        "models": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 20, "uniqueItems": True},
+    },
+    ("models",),
+)
+
+SURP_COMBO_LIST = schema(
+    "surp_combo_list",
+    "List public community-created Surp combos and their current cheapest routes. Free and read-only.",
+    {},
+)
+
+SURP_COMBO_GET = schema(
+    "surp_combo_get",
+    "Inspect one public custom Surp combo, including its member pool and current routed model. Free and read-only.",
+    {"slug": {"type": "string"}},
+    ("slug",),
+)

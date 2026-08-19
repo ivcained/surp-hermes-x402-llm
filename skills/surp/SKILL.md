@@ -37,6 +37,12 @@ Use `surp_mode` only when the user asks for a routing lens:
 - `speed`: favor verified output throughput.
 - `intel`: favor intelligence.
 
+## Custom combos
+
+When the user wants a curated pool, call `surp_models` first to confirm concrete model ids, then call `surp_combo_create` with 2–20 unique ids. Creation is public and free. Surp returns a stable model id such as `surp/my/abc123`; future requests dynamically choose the cheapest available member of that pool.
+
+Use `surp_combo_list` to discover community combos and `surp_combo_get` to inspect the complete member pool. Do not imply ownership or privacy: custom combos are public, deduplicated by their model set, and may return `existing: true` when the same set was already created.
+
 ## Exact-response cache
 
 A request is eligible only when it is non-streaming, temperature zero, has no tools, asks for one candidate, and does not bypass the cache. Eligibility does not guarantee a hit: the full normalized request must already exist within the 15-minute TTL.

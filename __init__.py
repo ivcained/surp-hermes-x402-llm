@@ -1,23 +1,25 @@
 """Surp Hermes plugin registration entry point."""
 
-try:  # Hermes loads directory plugins under a generated package namespace.
+try:
     from .handlers import (
-        surp_cache_status_handler,
-        surp_chat_handler,
-        surp_models_handler,
-        surp_quote_handler,
-        surp_usage_handler,
+        surp_cache_status_handler, surp_chat_handler, surp_models_handler,
+        surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
+        surp_combo_list_handler, surp_combo_get_handler,
     )
-    from .schemas import SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE
-except ImportError:  # Direct source execution and lightweight test fixtures.
+    from .schemas import (
+        SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
+        SURP_COMBO_CREATE, SURP_COMBO_LIST, SURP_COMBO_GET,
+    )
+except ImportError:
     from handlers import (
-        surp_cache_status_handler,
-        surp_chat_handler,
-        surp_models_handler,
-        surp_quote_handler,
-        surp_usage_handler,
+        surp_cache_status_handler, surp_chat_handler, surp_models_handler,
+        surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
+        surp_combo_list_handler, surp_combo_get_handler,
     )
-    from schemas import SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE
+    from schemas import (
+        SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
+        SURP_COMBO_CREATE, SURP_COMBO_LIST, SURP_COMBO_GET,
+    )
 
 
 _TOOLS = [
@@ -26,6 +28,9 @@ _TOOLS = [
     ("surp_cache_status", SURP_CACHE_STATUS, surp_cache_status_handler, "♻️"),
     ("surp_chat", SURP_CHAT, surp_chat_handler, "➕"),
     ("surp_usage", SURP_USAGE, surp_usage_handler, "📊"),
+    ("surp_combo_create", SURP_COMBO_CREATE, surp_combo_create_handler, "🧩"),
+    ("surp_combo_list", SURP_COMBO_LIST, surp_combo_list_handler, "📚"),
+    ("surp_combo_get", SURP_COMBO_GET, surp_combo_get_handler, "🔬"),
 ]
 
 

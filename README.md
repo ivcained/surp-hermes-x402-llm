@@ -9,6 +9,9 @@ It adds five tools:
 - `surp_cache_status` — check cache eligibility and public cache metrics
 - `surp_chat` — guarded OpenAI-compatible chat using a Surp API key
 - `surp_usage` — inspect configured-key balance and usage
+- `surp_combo_create` — create or reuse a public combo from 2–20 models
+- `surp_combo_list` — browse community-created combos
+- `surp_combo_get` — inspect one combo's pool and current route
 
 The bundled `surp` skill teaches Hermes how to choose routes, quote before spending, build cache-friendly requests, and interpret payment metadata.
 
