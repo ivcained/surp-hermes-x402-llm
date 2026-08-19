@@ -1,0 +1,36 @@
+name: surp-hermes-x402-llm
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+description: "Cache-aware Surp LLM routing for Hermes — live models, quotes, cache status, guarded paid chat, and usage."
+author: ivcained
+license: MIT
+homepage: https://github.com/ivcained/surp-hermes-x402-llm
+tags: [llm, x402, usdc, base, routing, cache]
+kind: backend
+requires_env:
+  - name: SURP_API_KEY
+    description: "A Surp API key for paid chat and usage. Public discovery and cache tools work without it."
+    url: "https://surp.ivc.lol/app"
+    secret: true
+config_schema:
+  base_url:
+    type: str
+    default: "https://surp.ivc.lol"
+    description: "Surp gateway base URL"
+  max_spend_usd:
+    type: float
+    default: 0.05
+    description: "Maximum amount a single paid tool call may authorize"
+  timeout_seconds:
+    type: int
+    default: 30
+    description: "HTTP timeout"
+provides_tools:
+  - surp_models
+  - surp_quote
+  - surp_cache_status
+  - surp_chat
+  - surp_usage
+provides_skills:
+  - surp

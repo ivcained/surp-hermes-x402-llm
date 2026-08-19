@@ -1,0 +1,71 @@
+"""JSON schemas exposed to Hermes' model tool registry."""
+
+
+def schema(name, description, properties, required=()):
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": list(required),
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+SURP_MODELS = schema(
+    "surp_models",
+    "List live Surp routing combos or underlying models with current prices. Read-only and free; use before choosing a route.",
+    {
+        "kind": {"type": "string", "enum": ["combos", "models"], "default": "combos"},
+        "model_class": {"type": "string", "enum": ["chat", "coding", "reasoning", "fast", "vision"]},
+        "pro": {"type": "boolean"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+    },
+)
+
+SURP_QUOTE = schema(
+    "surp_quote",
+    "Estimate a fresh Surp request and show the exact-cache-hit price without spending money. A quote is not a payment authorization.",
+    {
+        "model": {"type": "string", "description": "Surp combo, for example surp/best-chat"},
+        "max_tokens": {"type": "integer", "minimum": 1, "maximum": 100000, "default": 1500},
+        "cacheable": {"type": "boolean", "description": "Whether the intended request follows exact-cache eligibility rules."},
+    },
+    ("model",),
+)
+
+SURP_CACHE_STATUS = schema(
+    "surp_cache_status",
+    "Inspect public Surp cache metrics or explain whether request settings are eligible for the 15-minute exact-response cache. Read-only and free.",
+    {
+        "request": {"type": "object", "description": "Optional OpenAI chat request settings to check for eligibility."},
+    },
+)
+
+SURP_CHAT = schema(
+    "surp_chat",
+    "Make a paid Surp OpenAI-compatible chat request using SURP_API_KEY. Requires confirm_spend=true and enforces the configured per-request ceiling. Returns routing, settlement, and cache metadata.",
+    {
+        "model": {"type": "string"},
+        "messages": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+        "confirm_spend": {"type": "boolean", "description": "Must be true after the user has authorized spending."},
+        "max_spend_usd": {"type": "number", "minimum": 0, "maximum": 1},
+        "temperature": {"type": "number", "minimum": 0, "maximum": 2, "default": 0},
+        "max_tokens": {"type": "integer", "minimum": 1, "maximum": 100000, "default": 1500},
+        "stream": {"type": "boolean", "default": False},
+        "surp_bypass_cache": {"type": "boolean", "default": False},
+        "surp_mode": {"type": "string", "enum": ["cost", "value", "balanced", "speed", "intel"]},
+    },
+    ("model", "messages", "confirm_spend"),
+)
+
+SURP_USAGE = schema(
+    "surp_usage",
+    "Read balance and usage for the configured SURP_API_KEY. Read-only; never returns the key itself.",
+    {},
+)
