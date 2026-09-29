@@ -70,6 +70,12 @@ SURP_USAGE = schema(
     {},
 )
 
+SURP_JEV_STATS = schema(
+    "surp_jev_stats",
+    "Show Jev decision-model routing telemetry from the Surp gateway: total routing decisions, fallback rate, shadow agreement rate, p50 decision latency, and whether shadow and live Jev routing are enabled. Use this to check how the surp/jev preset is performing or whether Jev routing is active. No API key required.",
+    {},
+)
+
 SURP_COMBO_CREATE = schema(
     "surp_combo_create",
     "Create or reuse a public custom Surp combo from 2 to 20 concrete model ids. It dynamically routes to the cheapest available member. Creating it does not spend money.",

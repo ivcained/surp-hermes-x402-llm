@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 import pytest
 
@@ -150,3 +151,29 @@ def test_custom_combo_handler_redacts_and_normalizes_models(monkeypatch):
     assert result["ok"] is True
     sent = json.loads(tx.calls[0]["body"])
     assert sent["models"] == ["glm-5.2", "deepseek-v4-flash"]
+
+
+def test_jev_stats_is_public_and_reports_routing_telemetry():
+    """surp_jev_stats needs no API key and returns the Jev routing telemetry."""
+
+    class FakeClient:
+        def jev_stats(self):
+            return {
+                "jev_decisions_total": 120,
+                "jev_fallbacks_total": 3,
+                "jev_fallback_rate": 0.025,
+                "jev_shadow_agreement_rate": 0.71,
+                "jev_latency_ms_p50": 388.5,
+                "jev_shadow_enabled": True,
+                "jev_live_enabled": True,
+                "units": {"jev_latency_ms_p50": "milliseconds"},
+            }
+
+    with mock.patch.object(handlers, "make_client", return_value=FakeClient()):
+        result = json.loads(handlers.surp_jev_stats_handler({}))
+
+    assert result["ok"] is True
+    assert result["jev_decisions_total"] == 120
+    assert result["jev_fallback_rate"] == 0.025
+    assert result["jev_shadow_agreement_rate"] == 0.71
+    assert result["jev_live_enabled"] is True

@@ -16,7 +16,8 @@ Use this skill when the user asks Hermes to choose or call a Surp route, compare
 2. Call `surp_quote` before `surp_chat` for paid work.
 3. State the route, estimated fresh price, configured ceiling, and whether exact caching is possible.
 4. Call `surp_chat` only when the user has authorized the spend and set `confirm_spend: true`.
-5. Read the returned `surp.cache`, `surp.routed_model`, `surp.payment_settled`, and `surp.charged_usd` fields. Never infer payment success without them.
+5. Read the returned `surp.cache`, `surp.routed_model`, `surp.payment_settled`, and `surp.charged_usd` fields. Never infer payment success without them. On the `surp/jev` preset, also read the `X-Surp-Jev` response header (or the `surp.jev` block) for the pick, confidence, latency, and fallback status.
+6. Use `surp_jev_stats` to check Jev routing telemetry — decisions, fallback rate, shadow agreement rate, p50 decision latency — when the user asks how `surp/jev` is performing.
 6. Never ask the user to paste an API key or private wallet key into chat. `SURP_API_KEY` belongs in Hermes secret configuration.
 
 ## Choosing routes

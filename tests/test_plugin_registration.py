@@ -23,6 +23,7 @@ def test_plugin_registers_declared_tools():
         "surp_cache_status",
         "surp_chat",
         "surp_usage",
+        "surp_jev_stats",
         "surp_combo_create",
         "surp_combo_list",
         "surp_combo_get",

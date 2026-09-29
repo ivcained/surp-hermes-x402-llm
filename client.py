@@ -108,6 +108,11 @@ class SurpClient:
         body, _ = self._call("GET", "/api/stats")
         return body
 
+    def jev_stats(self):
+        """Jev routing telemetry: decisions, fallback rate, agreement rate, latency."""
+        body, _ = self._call("GET", "/api/jev/stats")
+        return body
+
     def create_combo(self, *, name: str, models: list[str]):
         clean_name = str(name or "").strip()
         clean_models = [str(model).strip().lower() for model in (models or []) if str(model).strip()]

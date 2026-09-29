@@ -103,6 +103,10 @@ def surp_usage_handler(args, **kwargs):
     return _run(lambda: {"ok": True, **make_client().usage()})
 
 
+def surp_jev_stats_handler(args, **kwargs):
+    return _run(lambda: {"ok": True, **make_client().jev_stats()})
+
+
 def surp_combo_create_handler(args, **kwargs):
     args = args or {}
     return _run(lambda: {
