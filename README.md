@@ -1,6 +1,8 @@
 # surp-hermes-x402-llm
 
-Standalone Hermes Agent plugin for Surp's cache-aware LLM router.
+Standalone Hermes Agent plugin for Surp's Jev-integrated smart LLM router.
+
+Surp routes OpenAI-compatible requests across live models with x402 payments on Base. Route selection is backed by [Jev](https://typesafe.ai), TypeSafe's System One decision model: per request, Jev scores a bounded candidate list against price, latency, cache state, and route health, with a confidence score and fail-open fallback to static routing. Prompt content never leaves the router — Jev sees request metadata only. The opt-in `surp/jev` preset follows Jev's pick; the other presets stay static.
 
 It adds five tools:
 
@@ -44,6 +46,16 @@ plugins:
 ```
 
 The current client also accepts `SURP_BASE_URL`, `SURP_MAX_SPEND_USD`, and `SURP_TIMEOUT_SECONDS` for compatibility while standalone plugin setting access is stabilized. The API key is the only required secret.
+
+## Jev smart routing
+
+Surp integrates [Jev](https://typesafe.ai), TypeSafe's System One decision model, as an optional routing brain. Instead of a static quality/cost table alone, Jev evaluates each request's envelope — token estimate, modality, route health, cache state, latency percentiles — and scores each candidate route from a bounded list.
+
+- Opt in with `model: "surp/jev"`. Other presets stay static.
+- Jev receives request metadata only, never prompt content.
+- Each pick carries a confidence score; below threshold, the static router takes over.
+- Jev timeout, error, or low confidence falls open to the existing router. Availability never depends on Jev.
+- Ships first as shadow telemetry (logging what Jev would have picked), then as the live preset.
 
 ## Payment boundary
 

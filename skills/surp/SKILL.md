@@ -1,6 +1,6 @@
 ---
 name: surp
-description: "Use Surp for cheap, cache-aware LLM requests through Hermes."
+description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset."
 version: 0.1.0
 author: ivcained
 license: MIT
@@ -21,6 +21,7 @@ Use this skill when the user asks Hermes to choose or call a Surp route, compare
 
 ## Choosing routes
 
+- `surp/jev`: Jev decision-model routing. TypeSafe Jev picks the route per request from a bounded candidate list, using request metadata only (never prompt content), with a confidence score and fail-open fallback to static routing. Use when the user wants the smartest available routing and accepts a small decision overhead.
 - `surp/free`: sponsored chat with strict daily and per-IP limits.
 - `surp/free-coding`: sponsored coding route.
 - `surp/free-fast`: sponsored low-latency route.
