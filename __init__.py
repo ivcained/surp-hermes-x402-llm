@@ -5,6 +5,7 @@ try:
         surp_cache_status_handler, surp_chat_handler, surp_models_handler,
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
+        set_context,
     )
     from .schemas import (
         SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
@@ -15,6 +16,7 @@ except ImportError:
         surp_cache_status_handler, surp_chat_handler, surp_models_handler,
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
+        set_context,
     )
     from schemas import (
         SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
@@ -37,11 +39,13 @@ _TOOLS = [
 
 def register(ctx) -> None:
     """Register Surp tools. Called once by Hermes' plugin loader."""
+    set_context(ctx)
     for name, schema, handler, emoji in _TOOLS:
         ctx.register_tool(
             name=name,
             toolset="surp",
-            schema=schema,
+            # Hermes wraps the schema in {"type": "function", "function": ...} itself.
+            schema=schema["function"],
             handler=handler,
             description=schema["function"]["description"],
             emoji=emoji,

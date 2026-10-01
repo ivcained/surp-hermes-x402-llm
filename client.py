@@ -137,7 +137,7 @@ class SurpClient:
         return body
 
     def usage(self):
-        body, _ = self._call("GET", "/api/keys/balance", query={"key": self.api_key}, authenticated=True)
+        body, _ = self._call("GET", "/api/keys/balance", authenticated=True)
         return body
 
     def quote(self, *, model: str, max_tokens: int = 1500, cacheable: bool = False):
@@ -155,6 +155,21 @@ class SurpClient:
             "exact_cache_hit_usd": 0.001 if cacheable else None,
             "note": "A cache hit is possible only for an identical eligible request already stored within the 15-minute TTL.",
         }
+
+    def _estimate_usd(self, model: str, max_tokens: int) -> float:
+        """Live price for max_tokens on this route (same formula as quote()).
+
+        Custom combos are priced at their most expensive member, since the
+        route can change between this check and the request.
+        """
+        normalized = model if model.startswith("surp/") else f"surp/{model}"
+        if not normalized.startswith("surp/my/"):
+            return float(self.quote(model=model, max_tokens=max_tokens)["fresh_estimate_usd"])
+        pool = self.custom_combo(normalized[len("surp/my/"):]).get("pool") or []
+        prices = [float(row.get("usd_per_1m", 0) or 0) for row in pool]
+        if not prices:
+            raise SurpError(f"Cannot price custom combo {normalized}; refusing paid request")
+        return max(0.01, max(prices) * max_tokens / 1_000_000 * 1.05)
 
     def chat(
         self,
@@ -174,6 +189,15 @@ class SurpClient:
             raise SpendLimitExceeded(
                 f"Requested ceiling ${ceiling:.4f} exceeds configured per-request limit ${self.max_spend_usd:.4f}"
             )
+        # Surp prices a request up front from max_tokens, so pin it and refuse
+        # before the paid call when that price is above the ceiling.
+        options.setdefault("max_tokens", 1500)
+        estimate = self._estimate_usd(model, int(options["max_tokens"]))
+        if estimate > ceiling:
+            raise SpendLimitExceeded(
+                f"Estimated cost ${estimate:.4f} for max_tokens={options['max_tokens']} exceeds the "
+                f"${ceiling:.4f} per-request ceiling; the request was not sent (lower max_tokens)"
+            )
         payload = {"model": model, "messages": messages, **options}
         body, headers = self._call("POST", "/v1/chat/completions", data=payload, authenticated=True)
         body["surp"] = {
@@ -192,10 +216,17 @@ def _float_or_none(value):
         return None
 
 
-def from_environment() -> SurpClient:
+def from_environment(get_config=None) -> SurpClient:
+    """Build a client from config.yaml plugin settings, falling back to SURP_* env vars.
+
+    ``get_config`` is Hermes' ``ctx.get_config(key, default)``. If both config.yaml
+    and SURP_MAX_SPEND_USD set a spend ceiling, the lower one applies.
+    """
+    get = get_config or (lambda key, default=None: default)
+    limits = [float(v) for v in (get("max_spend_usd", None), os.getenv("SURP_MAX_SPEND_USD")) if v not in (None, "")]
     return SurpClient(
-        os.getenv("SURP_BASE_URL", "https://surp.ivc.lol"),
+        get("base_url", None) or os.getenv("SURP_BASE_URL", "https://surp.ivc.lol"),
         api_key=os.getenv("SURP_API_KEY", ""),
-        max_spend_usd=float(os.getenv("SURP_MAX_SPEND_USD", "0.05")),
-        timeout=int(os.getenv("SURP_TIMEOUT_SECONDS", "30")),
+        max_spend_usd=min(limits) if limits else 0.05,
+        timeout=int(get("timeout_seconds", None) or os.getenv("SURP_TIMEOUT_SECONDS", "30")),
     )

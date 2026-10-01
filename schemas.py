@@ -49,7 +49,7 @@ SURP_CACHE_STATUS = schema(
 
 SURP_CHAT = schema(
     "surp_chat",
-    "Make a paid Surp OpenAI-compatible chat request using SURP_API_KEY. Requires confirm_spend=true and enforces the configured per-request ceiling. Returns routing, settlement, and cache metadata.",
+    "Make a paid Surp OpenAI-compatible chat request using SURP_API_KEY. Requires confirm_spend=true. Refuses the request before sending it if Surp's live price for max_tokens (default 1500) exceeds max_spend_usd or the configured per-request ceiling. Returns routing, settlement, and cache metadata.",
     {
         "model": {"type": "string"},
         "messages": {"type": "array", "items": {"type": "object"}, "minItems": 1},
