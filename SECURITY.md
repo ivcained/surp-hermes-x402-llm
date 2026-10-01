@@ -19,7 +19,7 @@ The plugin runs inside Hermes with the user's permissions. It is not a sandbox.
 - Tool output must never include credentials.
 - A quote is informational; only `surp_chat` can create a paid request.
 - `confirm_spend` is an explicit model-visible authorization flag, not a substitute for Hermes' own approval controls.
-- The configured per-request ceiling is enforced before network I/O.
+- The per-request ceiling is checked before the paid call: the request is refused if Surp's live price for `max_tokens` exceeds it. Surp sets the final charge.
 - Paid calls are never automatically retried because payment state may be ambiguous after a timeout.
 - This release does not handle private keys or sign x402 payloads.
 

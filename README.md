@@ -46,7 +46,7 @@ plugins:
         timeout_seconds: 30
 ```
 
-The current client also accepts `SURP_BASE_URL`, `SURP_MAX_SPEND_USD`, and `SURP_TIMEOUT_SECONDS` for compatibility while standalone plugin setting access is stabilized. The API key is the only required secret.
+These settings are read at call time. `SURP_BASE_URL`, `SURP_MAX_SPEND_USD`, and `SURP_TIMEOUT_SECONDS` are still accepted as fallbacks; if both `config.yaml` and `SURP_MAX_SPEND_USD` set a ceiling, the lower one applies. The API key is the only required secret.
 
 ## Jev smart routing
 
@@ -66,6 +66,8 @@ Version 0.1 uses Surp API-key billing. It does not accept wallet private keys an
 
 - `confirm_spend: true`
 - a call ceiling no greater than the configured `max_spend_usd` (default `$0.05`)
+
+Before the paid call, the plugin prices the request the way Surp does (live route price × `max_tokens`, default 1500, plus markup) and refuses it if that price exceeds the ceiling. `max_tokens` is always sent, so Surp prices the request from that same value. The final charge is set by Surp and reported as `surp.charged_usd`.
 
 The plugin does not automatically retry a paid request. An ambiguous timeout can leave payment state unknown, so retrying could duplicate spend.
 

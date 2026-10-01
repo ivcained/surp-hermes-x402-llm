@@ -50,6 +50,33 @@ def test_chat_refuses_over_spend_ceiling_before_network():
     assert tx.calls == []
 
 
+def test_chat_refuses_when_price_for_max_tokens_exceeds_ceiling():
+    # $4/1M tokens * 100k max_tokens * 1.05 = $0.42, far above the $0.05 ceiling.
+    tx = FakeTransport([response(body={"combos": [{"combo": "surp/pro-chat", "usd_per_1m_tokens": 4.0}]})])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", max_spend_usd=0.05, transport=tx)
+    with pytest.raises(client.SpendLimitExceeded):
+        c.chat(
+            model="surp/pro-chat",
+            messages=[{"role": "user", "content": "hi"}],
+            confirm_spend=True,
+            max_tokens=100000,
+        )
+    assert all(call["url"].endswith("/api/combos") for call in tx.calls)
+
+
+def test_config_yaml_settings_are_honoured(monkeypatch):
+    monkeypatch.delenv("SURP_MAX_SPEND_USD", raising=False)
+    settings = {"base_url": "https://example.test", "max_spend_usd": 0.02, "timeout_seconds": 7}
+    handlers.set_context(type("Ctx", (), {"get_config": staticmethod(lambda key, default=None: settings.get(key, default))})())
+    try:
+        c = handlers.make_client()
+        assert (c.base_url, c.max_spend_usd, c.timeout) == ("https://example.test", 0.02, 7)
+        monkeypatch.setenv("SURP_MAX_SPEND_USD", "0.01")
+        assert handlers.make_client().max_spend_usd == 0.01  # the lower ceiling wins
+    finally:
+        handlers.set_context(None)
+
+
 def test_paid_chat_requires_explicit_confirmation():
     tx = FakeTransport([])
     c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
@@ -60,6 +87,7 @@ def test_paid_chat_requires_explicit_confirmation():
 
 def test_chat_returns_cache_and_cost_metadata():
     tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "usd_per_1m_tokens": 0.03}]}),
         response(
             body={"choices": [{"message": {"content": "hello"}}]},
             headers={
