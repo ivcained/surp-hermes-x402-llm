@@ -216,6 +216,18 @@ def _float_or_none(value):
         return None
 
 
+def _surp_api_key() -> str:
+    """SURP_API_KEY through Hermes' profile-scoped secret store (agent.secret_scope),
+    never a bare os.environ/.env read — catalog rule: declared env secrets resolve
+    through the scope so multiplexed profiles never leak each other's keys. The
+    scope itself falls back to the process env on single-profile deployments."""
+    try:
+        from agent.secret_scope import get_secret_str
+        return (get_secret_str("SURP_API_KEY", "") or "").strip()
+    except Exception:
+        return ""
+
+
 def from_environment(get_config=None) -> SurpClient:
     """Build a client from config.yaml plugin settings, falling back to SURP_* env vars.
 
@@ -226,7 +238,7 @@ def from_environment(get_config=None) -> SurpClient:
     limits = [float(v) for v in (get("max_spend_usd", None), os.getenv("SURP_MAX_SPEND_USD")) if v not in (None, "")]
     return SurpClient(
         get("base_url", None) or os.getenv("SURP_BASE_URL", "https://surp.ivc.lol"),
-        api_key=os.getenv("SURP_API_KEY", ""),
+        api_key=_surp_api_key(),
         max_spend_usd=min(limits) if limits else 0.05,
         timeout=int(get("timeout_seconds", None) or os.getenv("SURP_TIMEOUT_SECONDS", "30")),
     )

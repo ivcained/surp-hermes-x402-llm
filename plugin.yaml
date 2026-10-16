@@ -1,5 +1,5 @@
 name: surp-hermes-x402-llm
-version: 0.3.1
+version: 0.3.2
 manifest_version: 2
 api_version: 1
 description: "Jev-integrated smart LLM routing for Hermes — live models, quotes, cache status, guarded paid chat, usage, and decision-model route selection via TypeSafe Jev."
