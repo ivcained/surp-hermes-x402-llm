@@ -30,3 +30,5 @@ def test_plugin_registers_declared_tools():
     }
     assert all(x["toolset"] == "surp" for x in ctx.tools)
     assert all(callable(x["handler"]) for x in ctx.tools)
+    # Hermes adds the {"type": "function"} wrapper itself; pass the bare function schema.
+    assert all({"name", "description", "parameters"} <= set(x["schema"]) for x in ctx.tools)

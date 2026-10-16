@@ -11,8 +11,17 @@ except ImportError:
     import client
 
 
+_plugin_ctx = None
+
+
+def set_context(ctx) -> None:
+    """Remember the Hermes plugin context so config.yaml settings are read at call time."""
+    global _plugin_ctx
+    _plugin_ctx = ctx
+
+
 def make_client() -> client.SurpClient:
-    return client.from_environment()
+    return client.from_environment(getattr(_plugin_ctx, "get_config", None))
 
 
 def _run(fn):
