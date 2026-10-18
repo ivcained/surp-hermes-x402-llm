@@ -43,7 +43,7 @@ def _untrusted_providers(cli: client.SurpClient) -> list[str]:
         _providers_cache["rows"] = cli.providers().get("providers", [])
         _providers_cache["at"] = now
     return [
-        str(row.get("provider") or row.get("name") or "").strip().lower()
+        str(row.get("provider") or row.get("id") or row.get("name") or "").strip().lower()
         for row in _providers_cache["rows"]
         if not bool(row.get("trusted"))
     ]

@@ -133,8 +133,8 @@ class SurpClient:
         body, _ = self._call("GET", path)
         if clean:
             return body
-        models = body.get("models", body if isinstance(body, list) else [])
-        rows = [row for row in models if isinstance(row, dict) and row.get("model")][: max(1, min(int(limit), 500))]
+        models = body.get("models") or body.get("markets") or (body if isinstance(body, list) else [])
+        rows = [row for row in models if isinstance(row, dict) and (row.get("model") or row.get("id"))][: max(1, min(int(limit), 500))]
         return {"count": len(rows), "models": rows, "cached": bool(body.get("cached")) if isinstance(body, dict) else None}
 
     def providers(self, *, model: str | None = None, include_performance: bool = True):
