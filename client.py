@@ -72,15 +72,26 @@ class SurpClient:
         self.timeout = int(timeout)
         self.transport = transport or UrllibTransport()
 
-    def _call(self, method: str, path: str, *, data=None, query=None, authenticated=False):
+    def _call(
+        self,
+        method: str,
+        path: str,
+        *,
+        data=None,
+        query=None,
+        authenticated=False,
+        extra_headers: dict[str, str] | None = None,
+    ):
         if authenticated and not self.api_key:
             raise AuthenticationRequired("SURP_API_KEY is required for this operation")
         url = self.base_url + path
         if query:
             url += "?" + urlencode({k: v for k, v in query.items() if v is not None})
-        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.1.0"}
+        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.4.0"}
         if authenticated:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        if extra_headers:
+            headers.update({k: v for k, v in extra_headers.items() if v})
         raw = None
         if data is not None:
             raw = json.dumps(data, separators=(",", ":")).encode("utf-8")
@@ -107,6 +118,44 @@ class SurpClient:
     def stats(self):
         body, _ = self._call("GET", "/api/stats")
         return body
+
+    def markets(self, *, model: str | None = None, limit: int = 100):
+        """Live Surplus Intelligence market data.
+
+        Without ``model``: every model with its best price, seller count and
+        volume. With ``model``: that model's full order book (every offer with
+        price, capacity, health, provider). Public and free.
+        """
+        clean = (str(model or "").strip().lower()) or None
+        if clean and any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789._-/" for ch in clean):
+            raise SurpError("Invalid model id for market lookup")
+        path = f"/api/markets/{clean}" if clean else "/api/markets"
+        body, _ = self._call("GET", path)
+        if clean:
+            return body
+        models = body.get("models", body if isinstance(body, list) else [])
+        rows = [row for row in models if isinstance(row, dict) and row.get("model")][: max(1, min(int(limit), 500))]
+        return {"count": len(rows), "models": rows, "cached": bool(body.get("cached")) if isinstance(body, dict) else None}
+
+    def providers(self, *, model: str | None = None, include_performance: bool = True):
+        """Provider catalog with trusted flags and, when available, live TPS.
+
+        Aggregates per provider by default; per-model performance rows when
+        ``model`` is given. Public and free.
+        """
+        if model:
+            clean = str(model).strip().lower()
+            body, _ = self._call("GET", f"/api/performance/{clean}")
+            return body
+        body, _ = self._call("GET", "/api/providers")
+        providers = body.get("providers", body if isinstance(body, list) else [])
+        rows = [row for row in providers if isinstance(row, dict)]
+        if include_performance is False:
+            rows = [
+                {k: v for k, v in row.items() if k not in ("tps_p50", "tps", "avg_latency_ms", "uptime_pct")}
+                for row in rows
+            ]
+        return {"count": len(rows), "providers": rows}
 
     def jev_stats(self):
         """Jev routing telemetry: decisions, fallback rate, agreement rate, latency."""
@@ -178,8 +227,10 @@ class SurpClient:
         messages: list[dict[str, Any]],
         confirm_spend: bool = False,
         max_spend_usd: float | None = None,
+        routing: dict[str, Any] | None = None,
+        mask_secrets: bool = False,
         **options,
-    ):
+    ) -> dict[str, Any]:
         if not self.api_key:
             raise AuthenticationRequired("SURP_API_KEY is required for paid chat; surp/free may be called without it")
         if not confirm_spend:
@@ -199,12 +250,28 @@ class SurpClient:
                 f"${ceiling:.4f} per-request ceiling; the request was not sent (lower max_tokens)"
             )
         payload = {"model": model, "messages": messages, **options}
-        body, headers = self._call("POST", "/v1/chat/completions", data=payload, authenticated=True)
+        if routing:
+            # Surplus Intelligence routing controls: providers_blocked,
+            # provider_order, si_route objective. Unknown keys are refused
+            # upstream anyway, so only forward documented ones.
+            for key in ("providers_blocked", "provider_order", "si_route"):
+                if routing.get(key) is not None:
+                    payload[key] = routing[key]
+        extra_headers = {"X-SI-Mask-Secrets": "on"} if mask_secrets else None
+        body, headers = self._call(
+            "POST", "/v1/chat/completions", data=payload, authenticated=True, extra_headers=extra_headers
+        )
         body["surp"] = {
             "cache": headers.get("x-surp-cache", "UNKNOWN"),
             "routed_model": headers.get("x-routed-model"),
             "payment_settled": headers.get("x-payment-settled", "").lower() == "true",
             "charged_usd": _float_or_none(headers.get("x-surp-charged-usd")),
+            "served_by": headers.get("x-si-served-by"),
+            "marketplace_attempts": headers.get("x-si-marketplace-attempts"),
+            "failed_attempts": headers.get("x-si-attempts") or None,
+            "buyer_cost_usd": _micro_to_usd(headers.get("x-si-buyer-cost-micro")),
+            "truncated": headers.get("x-si-truncated") == "1",
+            "secret_masking": headers.get("x-si-secret-masking"),
         }
         return body
 
@@ -212,6 +279,13 @@ class SurpClient:
 def _float_or_none(value):
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _micro_to_usd(value):
+    try:
+        return round(int(value) / 1_000_000, 6)
     except (TypeError, ValueError):
         return None
 

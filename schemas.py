@@ -49,7 +49,7 @@ SURP_CACHE_STATUS = schema(
 
 SURP_CHAT = schema(
     "surp_chat",
-    "Make a paid Surp OpenAI-compatible chat request using SURP_API_KEY. Requires confirm_spend=true. Refuses the request before sending it if Surp's live price for max_tokens (default 1500) exceeds max_spend_usd or the configured per-request ceiling. Returns routing, settlement, and cache metadata.",
+    "Make a paid Surp OpenAI-compatible chat request using SURP_API_KEY. Requires confirm_spend=true. Refuses the request before sending it if Surp's live price for max_tokens (default 1500) exceeds max_spend_usd or the configured per-request ceiling. Routing preferences set with surp_route_prefs (trusted_only, provider blocking/preference, objective, secret masking) are applied automatically; pass routing overrides here for one request. Returns routing, settlement, and cache metadata.",
     {
         "model": {"type": "string"},
         "messages": {"type": "array", "items": {"type": "object"}, "minItems": 1},
@@ -60,6 +60,10 @@ SURP_CHAT = schema(
         "stream": {"type": "boolean", "default": False},
         "surp_bypass_cache": {"type": "boolean", "default": False},
         "surp_mode": {"type": "string", "enum": ["cost", "value", "balanced", "speed", "intel"]},
+        "providers_blocked": {"type": "array", "items": {"type": "string"}, "description": "One-request override: providers to block for this call only."},
+        "provider_order": {"type": "array", "items": {"type": "string"}, "description": "One-request override: preferred provider order for this call only."},
+        "si_objective": {"type": "string", "enum": ["price", "latency", "balanced"], "description": "One-request override: router objective for this call only."},
+        "mask_secrets": {"type": "boolean", "description": "One-request override: send X-SI-Mask-Secrets: on so secrets are masked before reaching the seller."},
     },
     ("model", "messages", "confirm_spend"),
 )
@@ -68,6 +72,47 @@ SURP_USAGE = schema(
     "surp_usage",
     "Read balance and usage for the configured SURP_API_KEY. Read-only; never returns the key itself.",
     {},
+)
+
+SURP_MARKETS = schema(
+    "surp_markets",
+    "View current live marketplace prices for all models: best price, seller count and volume for every model, "
+    "or one model's full order book (every offer with price, capacity remaining, health status and provider) "
+    "by passing model. Prices are live Surplus Intelligence market prices, often below direct provider rates. "
+    "Read-only and free; no API key required.",
+    {
+        "model": {"type": "string", "description": "Optional model id (e.g. llama-3.3-70b). Omit for the all-models list."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
+    },
+)
+
+SURP_PROVIDERS = schema(
+    "surp_providers",
+    "List marketplace providers with their trusted flag (curated allowlist) and live throughput: TPS (tokens per second, p50), "
+    "TTFT, latency and uptime per provider. Pass model to get that model's per-provider performance instead. "
+    "Use with surp_route_prefs to switch between trusted and untrusted sellers or pin a specific provider. "
+    "Read-only and free; no API key required.",
+    {
+        "model": {"type": "string", "description": "Optional model id for per-model performance rows instead of provider aggregates."},
+        "include_performance": {"type": "boolean", "default": True},
+    },
+)
+
+SURP_ROUTE_PREFS = schema(
+    "surp_route_prefs",
+    "Get or change routing preferences that apply to every surp_chat call in this profile, so trusted/untrusted seller "
+    "switching and provider pinning happen mid-chat without touching config. trusted_only=true routes only to trusted "
+    "providers (from surp_providers); block_providers/prefer_providers take provider names; objective picks the router's "
+    "goal (price, latency, balanced); mask_secrets=true sends X-SI-Mask-Secrets on so secrets in the prompt are replaced "
+    "with placeholders before they reach the seller. Set action=reset to return to defaults.",
+    {
+        "action": {"type": "string", "enum": ["get", "set", "reset"], "default": "get"},
+        "trusted_only": {"type": "boolean"},
+        "block_providers": {"type": "array", "items": {"type": "string"}, "description": "Providers to block, e.g. [\"openrouter\"]"},
+        "prefer_providers": {"type": "array", "items": {"type": "string"}, "description": "Preferred provider order, e.g. [\"venice\", \"openai\"]"},
+        "objective": {"type": "string", "enum": ["price", "latency", "balanced"]},
+        "mask_secrets": {"type": "boolean"},
+    },
 )
 
 SURP_JEV_STATS = schema(

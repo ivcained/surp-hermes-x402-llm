@@ -169,6 +169,140 @@ def test_list_and_inspect_custom_combos():
     assert c.custom_combo("abc123")["model_id"] == "surp/my/abc123"
 
 
+def test_markets_lists_all_models():
+    tx = FakeTransport([response(body={"models": [
+        {"model": "llama-3.3-70b", "best_price_usd_per_1m": 0.12, "sellers": 5, "volume_24h_usd": 9.5},
+        {"model": "glm-5.3", "best_price_usd_per_1m": 0.09, "sellers": 2, "volume_24h_usd": 1.1},
+    ]})])
+    c = client.SurpClient("https://surp.ivc.lol", transport=tx)
+    result = c.markets()
+    assert result["count"] == 2
+    assert result["models"][0]["model"] == "llama-3.3-70b"
+    assert tx.calls[0]["url"].endswith("/api/markets")
+    assert "Authorization" not in tx.calls[0]["headers"]
+
+
+def test_markets_single_model_order_book():
+    tx = FakeTransport([response(body={"model": "llama-3.3-70b", "offers": [
+        {"provider": "venice", "price_usd_per_1m": 0.12, "health": "ok"},
+    ]})])
+    c = client.SurpClient("https://surp.ivc.lol", transport=tx)
+    result = c.markets(model="Llama-3.3-70B")
+    assert result["model"] == "llama-3.3-70b"
+    assert tx.calls[0]["url"].endswith("/api/markets/llama-3.3-70b")
+
+
+def test_providers_with_trusted_flag_and_tps():
+    tx = FakeTransport([response(body={"providers": [
+        {"provider": "openai", "trusted": True, "tps_p50": 84.3, "uptime_pct": 98.8},
+        {"provider": "shadyhost", "trusted": False, "tps_p50": 12.0, "uptime_pct": 71.2},
+    ]})])
+    c = client.SurpClient("https://surp.ivc.lol", transport=tx)
+    result = c.providers()
+    assert result["count"] == 2
+    assert result["providers"][0]["trusted"] is True
+    assert tx.calls[0]["url"].endswith("/api/providers")
+
+
+def test_providers_performance_for_one_model():
+    tx = FakeTransport([response(body={"model": "glm-5.3", "providers": [
+        {"provider": "venice", "tps_p50": 55.1, "ttft_p50_ms": 300},
+    ]})])
+    c = client.SurpClient("https://surp.ivc.lol", transport=tx)
+    result = c.providers(model="glm-5.3")
+    assert result["providers"][0]["tps_p50"] == 55.1
+    assert tx.calls[0]["url"].endswith("/api/performance/glm-5.3")
+
+
+def test_route_prefs_set_get_reset(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    import routing
+
+    saved = json.loads(handlers.surp_route_prefs_handler({"action": "set", "trusted_only": True, "mask_secrets": True, "block_providers": ["openrouter"], "objective": "latency"}))
+    assert saved["ok"] is True
+    assert saved["prefs"]["trusted_only"] is True
+    assert saved["prefs"]["block_providers"] == ["openrouter"]
+    assert saved["prefs"]["objective"] == "latency"
+    assert saved["prefs"]["mask_secrets"] is True
+
+    got = json.loads(handlers.surp_route_prefs_handler({"action": "get"}))
+    assert got["prefs"] == saved["prefs"]
+
+    reset = json.loads(handlers.surp_route_prefs_handler({"action": "reset"}))
+    assert reset["prefs"] == routing.DEFAULT_PREFS
+
+    bad = json.loads(handlers.surp_route_prefs_handler({"action": "set", "objective": "vibes"}))
+    assert bad["ok"] is False
+
+
+def _pref_chat_transport():
+    """providers -> combos -> chat, for a trusted_only paid call."""
+    return FakeTransport([
+        response(body={"providers": [
+            {"provider": "openai", "trusted": True},
+            {"provider": "shadyhost", "trusted": False},
+        ]}),
+        response(body={"combos": [{"combo": "surp/best-chat", "usd_per_1m_tokens": 0.03}]}),
+        response(
+            body={"choices": [{"message": {"content": "ok"}}]},
+            headers={
+                "X-Si-Served-By": "marketplace",
+                "X-Si-Buyer-Cost-Micro": "1234",
+                "X-Si-Secret-Masking": "applied",
+            },
+        ),
+    ])
+
+
+def test_chat_applies_route_prefs(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    tx = _pref_chat_transport()
+    monkeypatch.setattr(handlers, "make_client", lambda: client.SurpClient("https://surp.ivc.lol", api_key="surp_test", max_spend_usd=0.05, transport=tx))
+    set_result = json.loads(handlers.surp_route_prefs_handler({"action": "set", "trusted_only": True, "mask_secrets": True, "objective": "price"}))
+    assert set_result["ok"] is True
+
+    chat = json.loads(handlers.surp_chat_handler({
+        "model": "surp/best-chat",
+        "messages": [{"role": "user", "content": "hi"}],
+        "confirm_spend": True,
+    }))
+    assert chat["ok"] is True
+    chat_call = [call for call in tx.calls if call["url"].endswith("/v1/chat/completions")][0]
+    sent = json.loads(chat_call["body"])
+    assert sent["providers_blocked"] == ["shadyhost"]  # trusted_only blocked the untrusted provider
+    assert sent["si_route"] == {"objective": "price"}
+    assert chat_call["headers"]["X-SI-Mask-Secrets"] == "on"
+    assert chat["surp"]["routing_applied"]["providers_blocked"] == ["shadyhost"]
+    assert chat["surp"]["mask_secrets"] is True
+    assert chat["surp"]["served_by"] == "marketplace"
+    assert chat["surp"]["buyer_cost_usd"] == 0.001234
+    assert chat["surp"]["secret_masking"] == "applied"
+
+
+def test_chat_one_request_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "usd_per_1m_tokens": 0.03}]}),
+        response(body={"choices": [{"message": {"content": "ok"}}]}),
+    ])
+    monkeypatch.setattr(handlers, "make_client", lambda: client.SurpClient("https://surp.ivc.lol", api_key="surp_test", max_spend_usd=0.05, transport=tx))
+    handlers.surp_route_prefs_handler({"action": "set", "block_providers": ["openrouter"], "prefer_providers": ["venice"]})
+
+    chat = json.loads(handlers.surp_chat_handler({
+        "model": "surp/best-chat",
+        "messages": [{"role": "user", "content": "hi"}],
+        "confirm_spend": True,
+        "providers_blocked": ["together"],
+        "mask_secrets": True,
+    }))
+    assert chat["ok"] is True
+    chat_call = [call for call in tx.calls if call["url"].endswith("/v1/chat/completions")][0]
+    sent = json.loads(chat_call["body"])
+    assert sent["providers_blocked"] == ["together"]  # override replaced saved prefs for that field
+    assert sent["provider_order"] == ["venice"]  # saved preference untouched by the blocked override
+    assert chat_call["headers"].get("X-SI-Mask-Secrets") == "on"
+
+
 def test_custom_combo_handler_redacts_and_normalizes_models(monkeypatch):
     tx = FakeTransport([response(body={"model_id": "surp/my/x", "models": ["glm-5.2", "deepseek-v4-flash"]})])
     monkeypatch.setattr(handlers, "make_client", lambda: client.SurpClient("https://surp.ivc.lol", transport=tx))

@@ -19,6 +19,9 @@ def test_plugin_registers_declared_tools():
     module.register(ctx)
     assert {x["name"] for x in ctx.tools} == {
         "surp_models",
+        "surp_markets",
+        "surp_providers",
+        "surp_route_prefs",
         "surp_quote",
         "surp_cache_status",
         "surp_chat",

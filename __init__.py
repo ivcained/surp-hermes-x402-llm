@@ -5,27 +5,34 @@ try:
         surp_cache_status_handler, surp_chat_handler, surp_models_handler,
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
+        surp_markets_handler, surp_providers_handler, surp_route_prefs_handler,
         set_context,
     )
     from .schemas import (
         SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
         SURP_COMBO_CREATE, SURP_COMBO_LIST, SURP_COMBO_GET, SURP_JEV_STATS,
+        SURP_MARKETS, SURP_PROVIDERS, SURP_ROUTE_PREFS,
     )
 except ImportError:
     from handlers import (
         surp_cache_status_handler, surp_chat_handler, surp_models_handler,
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
+        surp_markets_handler, surp_providers_handler, surp_route_prefs_handler,
         set_context,
     )
     from schemas import (
         SURP_CACHE_STATUS, SURP_CHAT, SURP_MODELS, SURP_QUOTE, SURP_USAGE,
         SURP_COMBO_CREATE, SURP_COMBO_LIST, SURP_COMBO_GET, SURP_JEV_STATS,
+        SURP_MARKETS, SURP_PROVIDERS, SURP_ROUTE_PREFS,
     )
 
 
 _TOOLS = [
     ("surp_models", SURP_MODELS, surp_models_handler, "🔎"),
+    ("surp_markets", SURP_MARKETS, surp_markets_handler, "📈"),
+    ("surp_providers", SURP_PROVIDERS, surp_providers_handler, "⚡"),
+    ("surp_route_prefs", SURP_ROUTE_PREFS, surp_route_prefs_handler, "🎚️"),
     ("surp_quote", SURP_QUOTE, surp_quote_handler, "💵"),
     ("surp_cache_status", SURP_CACHE_STATUS, surp_cache_status_handler, "♻️"),
     ("surp_chat", SURP_CHAT, surp_chat_handler, "➕"),

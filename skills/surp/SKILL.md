@@ -1,14 +1,14 @@
 ---
 name: surp
-description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset."
-version: 0.1.0
+description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset, live market prices, trusted-seller switching and secret masking."
+version: 0.4.0
 author: ivcained
 license: MIT
 ---
 
 # Surp for Hermes
 
-Use this skill when the user asks Hermes to choose or call a Surp route, compare Surp models, inspect cache behavior, estimate cost, or check Surp usage.
+Use this skill when the user asks Hermes to choose or call a Surp route, compare Surp models or marketplace prices, inspect cache behavior, estimate cost, check Surp usage, switch between trusted and untrusted sellers, pin or block providers, or mask secrets in prompts.
 
 ## Safe workflow
 
@@ -18,7 +18,26 @@ Use this skill when the user asks Hermes to choose or call a Surp route, compare
 4. Call `surp_chat` only when the user has authorized the spend and set `confirm_spend: true`.
 5. Read the returned `surp.cache`, `surp.routed_model`, `surp.payment_settled`, and `surp.charged_usd` fields. Never infer payment success without them. On the `surp/jev` preset, also read the `X-Surp-Jev` response header (or the `surp.jev` block) for the pick, confidence, latency, and fallback status.
 6. Use `surp_jev_stats` to check Jev routing telemetry — decisions, fallback rate, shadow agreement rate, p50 decision latency — when the user asks how `surp/jev` is performing.
-6. Never ask the user to paste an API key or private wallet key into chat. `SURP_API_KEY` belongs in Hermes secret configuration.
+7. Never ask the user to paste an API key or private wallet key into chat. `SURP_API_KEY` belongs in Hermes secret configuration.
+
+## Market prices and provider speed
+
+- `surp_markets` (no key, free): every model's current best price, seller count and volume; pass `model` for that model's full order book with per-offer price, capacity, health and provider.
+- `surp_providers` (no key, free): every provider's trusted flag plus live TPS (tokens/second, p50), TTFT, latency and uptime; pass `model` for per-model provider performance.
+
+Use `surp_markets` whenever the user asks what models cost right now, and `surp_providers` when they ask which provider is fastest or which sellers are trusted.
+
+## Switching sellers mid-chat
+
+`surp_route_prefs` changes routing preferences that apply to every `surp_chat` call — no config edit, effective immediately:
+
+- `trusted_only: true` — only providers flagged trusted in the Surplus Intelligence allowlist.
+- `block_providers: [...]` — never route to these providers.
+- `prefer_providers: [...]` — try these providers first, in order.
+- `objective` — `price`, `latency`, or `balanced` for the router's goal.
+- `mask_secrets: true` — send `X-SI-Mask-Secrets: on` so API keys, private keys and passwords in the prompt are replaced with placeholders before the request reaches the seller, then restored in the response.
+
+`action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent.
 
 ## Choosing routes
 

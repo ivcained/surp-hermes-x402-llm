@@ -4,19 +4,35 @@ Standalone Hermes Agent plugin for Surp's Jev-integrated smart LLM router.
 
 Surp routes OpenAI-compatible requests across live models with x402 payments on Base. Route selection is backed by [Jev](https://typesafe.ai), TypeSafe's System One decision model: per request, Jev scores a bounded candidate list against price, latency, cache state, and route health, with a confidence score and fail-open fallback to static routing. Prompt content never leaves the router — Jev sees request metadata only. The opt-in `surp/jev` preset follows Jev's pick; the other presets stay static.
 
-It adds five tools:
+It adds twelve tools:
 
 - `surp_models` — inspect live combos or models
+- `surp_markets` — current marketplace prices for all models (best price, sellers, volume; or one model's full order book)
+- `surp_providers` — every provider's trusted flag plus live TPS, TTFT, latency and uptime; per-model provider performance with `model`
+- `surp_route_prefs` — switch trusted/untrusted sellers, pin or block providers, set the routing objective, and turn secret masking on — mid-chat, without config edits
 - `surp_quote` — estimate fresh inference and the exact-cache tier without spending
 - `surp_cache_status` — check cache eligibility and public cache metrics
-- `surp_chat` — guarded OpenAI-compatible chat using a Surp API key
+- `surp_chat` — guarded OpenAI-compatible chat using a Surp API key; applies routing preferences and secret masking automatically
 - `surp_usage` — inspect configured-key balance and usage
 - `surp_jev_stats` — Jev decision-model routing telemetry: decisions, fallback rate, shadow agreement rate, p50 latency
 - `surp_combo_create` — create or reuse a public combo from 2–20 models
 - `surp_combo_list` — browse community-created combos
 - `surp_combo_get` — inspect one combo's pool and current route
 
-The bundled `surp` skill teaches Hermes how to choose routes, quote before spending, build cache-friendly requests, and interpret payment metadata.
+The bundled `surp` skill teaches Hermes how to choose routes, quote before spending, build cache-friendly requests, interpret payment metadata, read market prices and provider TPS, switch sellers, and mask secrets.
+
+## Marketplace visibility and seller switching
+
+- `surp_markets` (free, no key): every model's live best price, seller count and volume; pass a model id for its full order book — every offer with price, capacity remaining, health status and provider.
+- `surp_providers` (free, no key): the provider catalog with each provider's `trusted` flag and live throughput — TPS (p50), TTFT, latency and uptime. Pass a model for per-model rows.
+- `surp_route_prefs`: persistent per-profile routing preferences applied to every `surp_chat` call:
+  - `trusted_only` — route only to providers on Surplus Intelligence's trusted allowlist;
+  - `block_providers` / `prefer_providers` — block or pin specific sellers;
+  - `objective` — `price`, `latency` or `balanced`;
+  - `mask_secrets` — send `X-SI-Mask-Secrets: on` so secrets in the prompt (API keys, private keys, passwords) are replaced with placeholders before the request reaches the seller and restored in the response.
+  
+  Preferences are stored per profile under `$HERMES_HOME/cache/surp-hermes-x402-llm/route-prefs.json` and take effect on the next call — mid-conversation switching with no restart.
+- `surp_chat` accepts one-request overrides (`providers_blocked`, `provider_order`, `si_objective`, `mask_secrets`) and reports what was applied in `surp.routing_applied`, plus settlement metadata: `surp.served_by`, `surp.failed_attempts`, `surp.buyer_cost_usd`, `surp.truncated`, `surp.secret_masking`.
 
 ## Install
 
