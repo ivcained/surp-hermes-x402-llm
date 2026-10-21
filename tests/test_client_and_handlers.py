@@ -279,6 +279,34 @@ def test_chat_applies_route_prefs(tmp_path, monkeypatch):
     assert chat["surp"]["secret_masking"] == "applied"
 
 
+def test_spend_approval_hook_escalates_paid_chat_calls():
+    directive = handlers.surp_spend_approval_hook("surp_chat", {
+        "model": "surp/best-chat", "confirm_spend": True, "max_tokens": 500,
+    })
+    assert directive["action"] == "approve"
+    assert directive["rule_key"] == "surp_chat:spend:surp/best-chat"
+    assert "surp/best-chat" in directive["message"]
+    assert "500" in directive["message"]
+
+
+def test_spend_approval_hook_ignores_unpaid_and_unrelated_calls():
+    # No confirm_spend -> the handler itself refuses; no approval prompt.
+    assert handlers.surp_spend_approval_hook("surp_chat", {"model": "surp/best-chat"}) is None
+    assert handlers.surp_spend_approval_hook("surp_chat", {"confirm_spend": False}) is None
+    # Other tools are never escalated.
+    assert handlers.surp_spend_approval_hook("surp_markets", {"model": "glm"}) is None
+    assert handlers.surp_spend_approval_hook("terminal", {"command": "ls"}) is None
+    # Malformed input never crashes the hot path.
+    assert handlers.surp_spend_approval_hook("surp_chat", None) is None
+    assert handlers.surp_spend_approval_hook("surp_chat", "not-a-dict") is None
+
+
+def test_spend_approval_grain_is_per_model():
+    a = handlers.surp_spend_approval_hook("surp_chat", {"model": "surp/a", "confirm_spend": True})
+    b = handlers.surp_spend_approval_hook("surp_chat", {"model": "surp/b", "confirm_spend": True})
+    assert a["rule_key"] != b["rule_key"]  # "always" on one model never covers another
+
+
 def test_chat_one_request_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     tx = FakeTransport([

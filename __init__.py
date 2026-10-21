@@ -6,6 +6,7 @@ try:
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
         surp_markets_handler, surp_providers_handler, surp_route_prefs_handler,
+        surp_spend_approval_hook,
         set_context,
     )
     from .schemas import (
@@ -19,6 +20,7 @@ except ImportError:
         surp_quote_handler, surp_usage_handler, surp_combo_create_handler,
         surp_combo_list_handler, surp_combo_get_handler, surp_jev_stats_handler,
         surp_markets_handler, surp_providers_handler, surp_route_prefs_handler,
+        surp_spend_approval_hook,
         set_context,
     )
     from schemas import (
@@ -57,3 +59,7 @@ def register(ctx) -> None:
             description=schema["function"]["description"],
             emoji=emoji,
         )
+    # Every paid surp_chat call (confirm_spend: true) is escalated to Hermes'
+    # human-approval gate before the tool runs — the user, not the model,
+    # authorizes the spend. Unattended contexts fail closed.
+    ctx.register_hook("pre_tool_call", surp_spend_approval_hook)

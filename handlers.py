@@ -221,6 +221,36 @@ def surp_usage_handler(args, **kwargs):
     return _run(lambda: {"ok": True, **make_client().usage()})
 
 
+def surp_spend_approval_hook(tool_name: str = "", args=None, **_):
+    """pre_tool_call hook: escalate every paid surp_chat call to Hermes' human-approval gate.
+
+    The model passing ``confirm_spend: true`` is necessary but not sufficient — the
+    user (not the model) approves the spend through the same prompt machinery as
+    dangerous shell commands (once / session / always / deny; gateway pending
+    approval; cron and other unattended contexts fail closed). Per-model
+    ``rule_key`` keeps the "always" grain narrow: approving one model never
+    authorizes a different one.
+    """
+    if tool_name != "surp_chat":
+        return None
+    args = args if isinstance(args, dict) else {}
+    if not bool(args.get("confirm_spend")):
+        # Unconfirmed calls never reach payment; the handler refuses them.
+        return None
+    model = str(args.get("model") or "(unspecified)")
+    max_tokens = args.get("max_tokens", 1500)
+    ceiling = getattr(make_client(), "max_spend_usd", None)
+    ceiling_note = f", ceiling ${ceiling:.2f}" if isinstance(ceiling, (int, float)) else ""
+    return {
+        "action": "approve",
+        "message": (
+            f"Approve a paid Surp request: model {model}, max_tokens={max_tokens}"
+            f"{ceiling_note}. The charge is settled by the surp.ivc.lol gateway from your prepaid key."
+        ),
+        "rule_key": f"surp_chat:spend:{model}",
+    }
+
+
 def surp_jev_stats_handler(args, **kwargs):
     return _run(lambda: {"ok": True, **make_client().jev_stats()})
 

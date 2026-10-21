@@ -87,7 +87,7 @@ class SurpClient:
         url = self.base_url + path
         if query:
             url += "?" + urlencode({k: v for k, v in query.items() if v is not None})
-        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.4.0"}
+        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.5.0"}
         if authenticated:
             headers["Authorization"] = f"Bearer {self.api_key}"
         if extra_headers:

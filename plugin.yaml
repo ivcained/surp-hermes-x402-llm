@@ -1,5 +1,5 @@
 name: surp-hermes-x402-llm
-version: 0.4.1
+version: 0.5.0
 manifest_version: 2
 api_version: 1
 description: "Jev-integrated smart LLM routing for Hermes — live market prices for all models, trusted/untrusted seller switching mid-chat, per-provider TPS, secret masking, quotes, cache status, guarded paid chat, usage, and decision-model route selection via TypeSafe Jev."
@@ -8,6 +8,8 @@ license: MIT
 homepage: https://github.com/ivcained/surp-hermes-x402-llm
 tags: ["llm", "x402", "usdc", "base", "routing", "cache", "jev", "typesafe", "decision-model", "smart-routing", "marketplace", "prices", "tps"]
 kind: backend
+provides_hooks:
+  - pre_tool_call
 requires_env:
   - name: SURP_API_KEY
     description: "A Surp API key for paid chat and usage. Public discovery and cache tools work without it."

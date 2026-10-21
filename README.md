@@ -76,16 +76,11 @@ Surp integrates [Jev](https://typesafe.ai), TypeSafe's System One decision model
 
 ## Payment boundary
 
-Version 0.1 uses Surp API-key billing. It does not accept wallet private keys and does not sign x402 payments.
+Version 0.5 routes every paid request through Hermes' human-approval gate. A `pre_tool_call` hook escalates any `surp_chat` call with `confirm_spend: true` to the same approval prompt machinery as dangerous shell commands: the user — not the model — authorizes the spend (once / session / always / deny; gateway users get a pending-approval card). The approval grain is per model, so "always" on one model never covers another. Unattended contexts (cron, single-query `-q` runs) fail closed by default — the paid call is denied, never silently sent. `approvals.mode: off` and YOLO bypass the prompt, exactly like every other Hermes approval.
 
-`surp_chat` requires both:
+Before the paid call, the plugin also prices the request the way Surp does (live route price × `max_tokens`, default 1500, plus markup) and refuses it if that price exceeds the ceiling. `max_tokens` is always sent, so Surp prices the request from that same value. The final charge is set by Surp and reported as `surp.charged_usd`.
 
-- `confirm_spend: true`
-- a call ceiling no greater than the configured `max_spend_usd` (default `$0.05`)
-
-Before the paid call, the plugin prices the request the way Surp does (live route price × `max_tokens`, default 1500, plus markup) and refuses it if that price exceeds the ceiling. `max_tokens` is always sent, so Surp prices the request from that same value. The final charge is set by Surp and reported as `surp.charged_usd`.
-
-The plugin does not automatically retry a paid request. An ambiguous timeout can leave payment state unknown, so retrying could duplicate spend.
+The plugin does not accept wallet private keys, does not sign x402 payments, and does not automatically retry a paid request. An ambiguous timeout can leave payment state unknown, so retrying could duplicate spend.
 
 ## Cache behavior
 
