@@ -1,7 +1,7 @@
 ---
 name: surp
 description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset, live market prices, trusted-seller switching and secret masking."
-version: 0.5.0
+version: 0.6.0
 author: ivcained
 license: MIT
 ---
@@ -35,7 +35,8 @@ Use `surp_markets` whenever the user asks what models cost right now, and `surp_
 - `block_providers: [...]` — never route to these providers.
 - `prefer_providers: [...]` — try these providers first, in order.
 - `objective` — `price`, `latency`, or `balanced` for the router's goal.
-- `mask_secrets: true` — send `X-SI-Mask-Secrets: on` so API keys, private keys and passwords in the prompt are replaced with placeholders before the request reaches the seller, then restored in the response.
+- `mask_secrets: true` — send `X-SI-Mask-Secrets: on` so secrets in the prompt are replaced with placeholders before the request reaches the seller, then restored in the response.
+- `default_route` — the surp combo used when the user names none (e.g. `surp/best-chat`). The SURP page's default-route picker edits this same value.
 
 `action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent.
 

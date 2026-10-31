@@ -100,11 +100,12 @@ SURP_PROVIDERS = schema(
 
 SURP_ROUTE_PREFS = schema(
     "surp_route_prefs",
-    "Get or change routing preferences that apply to every surp_chat call in this profile, so trusted/untrusted seller "
+    "Get or change routing preferences that apply to every surp_chat call, so trusted/untrusted seller "
     "switching and provider pinning happen mid-chat without touching config. trusted_only=true routes only to trusted "
     "providers (from surp_providers); block_providers/prefer_providers take provider names; objective picks the router's "
     "goal (price, latency, balanced); mask_secrets=true sends X-SI-Mask-Secrets on so secrets in the prompt are replaced "
-    "with placeholders before they reach the seller. Set action=reset to return to defaults.",
+    "with placeholders before reaching the seller; default_route sets the combo the agent uses when the user names none. "
+    "Set action=reset to return to defaults.",
     {
         "action": {"type": "string", "enum": ["get", "set", "reset"], "default": "get"},
         "trusted_only": {"type": "boolean"},
@@ -112,6 +113,7 @@ SURP_ROUTE_PREFS = schema(
         "prefer_providers": {"type": "array", "items": {"type": "string"}, "description": "Preferred provider order, e.g. [\"venice\", \"openai\"]"},
         "objective": {"type": "string", "enum": ["price", "latency", "balanced"]},
         "mask_secrets": {"type": "boolean"},
+        "default_route": {"type": "string", "description": "Default surp combo id, e.g. surp/best-chat"},
     },
 )
 

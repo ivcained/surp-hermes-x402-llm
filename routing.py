@@ -19,6 +19,7 @@ DEFAULT_PREFS = {
     "prefer_providers": [],
     "objective": None,  # "price" | "latency" | "balanced" | None (router default)
     "mask_secrets": False,
+    "default_route": None,  # surp combo id the user picked as their default route
 }
 
 _VALID_OBJECTIVES = ("price", "latency", "balanced")
@@ -74,6 +75,8 @@ def _sanitize(prefs: dict) -> dict:
             f"objective must be one of price, latency, balanced (got {objective!r})"
         )
     clean["mask_secrets"] = bool(prefs.get("mask_secrets", False))
+    route = prefs.get("default_route")
+    clean["default_route"] = str(route).strip() if isinstance(route, str) and route.strip() else None
     return clean
 
 

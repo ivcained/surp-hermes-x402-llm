@@ -208,6 +208,8 @@ def surp_route_prefs_handler(args, **kwargs):
                 current[key] = args[key]
         if args.get("objective") is not None:
             current["objective"] = args["objective"]
+        if args.get("default_route") is not None:
+            current["default_route"] = args["default_route"]
         saved = route_prefs.save_prefs(current)
         # Drop the in-process provider cache so a trusted_only flip re-reads the catalog.
         _providers_cache["at"] = 0.0
