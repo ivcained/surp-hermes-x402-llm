@@ -476,3 +476,59 @@ def test_tps_floor_refuses_custom_combo_without_a_single_resolved_model():
             confirm_spend=True, min_tps=80,
         )
     assert not any(call["url"].endswith("/v1/chat/completions") for call in tx.calls)
+
+
+def test_seller_board_combines_prices_discounts_and_performance():
+    tx = FakeTransport([
+        response(body={"model": "glm-5.3", "market": {
+            "model": "glm-5.3", "direct_input_per_1m": 100000, "direct_output_per_1m": 300000,
+            "providers": [
+                {"provider": "expensive-fast", "best_price_per_1m": 200000, "trusted": True},
+                {"provider": "cheap-slow", "best_price_per_1m": 100000, "trusted": False},
+            ],
+        }}),
+        response(body={"model": "glm-5.3", "providers": [
+            {"provider": "expensive-fast", "tps_p50": 100, "ttft_p50_ms": 200, "uptime_pct": 99},
+            {"provider": "cheap-slow", "tps_p50": 20, "ttft_p50_ms": 500, "uptime_pct": 90},
+        ]}),
+    ])
+    board = client.SurpClient("https://surp.ivc.lol", transport=tx).seller_board(model="glm-5.3")
+    assert [row["provider"] for row in board["cheapest"]] == ["cheap-slow", "expensive-fast"]
+    assert [row["provider"] for row in board["fastest"]] == ["expensive-fast", "cheap-slow"]
+    assert board["cheapest"][0]["discount_pct"] == 75
+    assert board["fastest"][0]["tps_p50"] == 100
+    assert board["average_tps"] == 60
+
+
+def test_seller_board_keeps_price_choices_when_performance_is_unavailable():
+    tx = FakeTransport([
+        response(body={"model": "glm-5.3", "market": {
+            "model": "glm-5.3", "direct_input_per_1m": 100000, "direct_output_per_1m": 300000,
+            "providers": [{"provider": "cheap", "best_price_per_1m": 100000}],
+        }}),
+        response(status=404, body={"error": "no_performance_data"}),
+    ])
+    board = client.SurpClient("https://surp.ivc.lol", transport=tx).seller_board(model="glm-5.3")
+    assert board["cheapest"][0]["provider"] == "cheap"
+    assert board["average_tps"] is None
+    assert "no_performance_data" in board["performance_error"]
+
+
+def test_min_discount_pref_and_paid_header(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    saved = json.loads(handlers.surp_route_prefs_handler({"action": "set", "min_discount": 30}))
+    assert saved["prefs"]["min_discount"] == 30
+    bad = json.loads(handlers.surp_route_prefs_handler({"action": "set", "min_discount": 30.5}))
+    assert bad["ok"] is False
+    tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "usd_per_1m_tokens": 0.03}]}),
+        response(body={"choices": [{"message": {"content": "ok"}}]}),
+    ])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
+    result = c.chat(
+        model="surp/best-chat", messages=[{"role": "user", "content": "hi"}],
+        confirm_spend=True, min_discount=30,
+    )
+    assert tx.calls[-1]["headers"]["X-Min-Discount"] == "30"
+    assert "min_discount" not in json.loads(tx.calls[-1]["body"])
+    assert result["surp"]["min_discount"] == 30

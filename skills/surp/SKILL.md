@@ -1,7 +1,7 @@
 ---
 name: surp
 description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset, live market prices, trusted-seller switching and secret masking."
-version: 0.7.0
+version: 0.8.0
 author: ivcained
 license: MIT
 ---
@@ -38,8 +38,9 @@ Use `surp_markets` whenever the user asks what models cost right now, and `surp_
 - `mask_secrets: true` — send `X-SI-Mask-Secrets: on` so secrets in the prompt are replaced with placeholders before the request reaches the seller, then restored in the response.
 - `default_route` — the surp combo used when the user names none (e.g. `surp/best-chat`). The SURP page's default-route picker edits this same value.
 - `min_tps` — desired trailing-24h p50 TPS floor for the combo's currently resolved model. Slow and unmeasured current providers are blocked before payment; `0` clears the floor. If no provider qualifies, do not loosen it silently: report the refusal and ask the user. Custom combos cannot be TPS-filtered safely because they have no single resolved model.
+- `min_discount` — minimum estimated buyer discount versus external list price, sent as `X-Min-Discount`; `0` clears it. If SI returns `minimum_discount_not_met`, report that no seller meets the floor and ask before lowering it.
 
-`action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `min_tps`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent, and `surp.tps_routing` records the floor, resolved model and eligible providers.
+`action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `min_tps`, `min_discount`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent, and `surp.tps_routing` records the floor, resolved model and eligible providers.
 
 Provider preferences and floors apply to the next request. Never claim to have moved an in-flight response to another seller, and never retry a paid request blindly to make switching appear seamless.
 

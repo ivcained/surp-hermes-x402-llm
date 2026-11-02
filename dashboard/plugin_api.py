@@ -65,6 +65,7 @@ class PrefsPatch(BaseModel):
     mask_secrets: bool | None = None
     default_route: str | None = None
     min_tps: float | None = Field(default=None, ge=0, le=100000)
+    min_discount: int | None = Field(default=None, ge=0, le=100)
 
 
 @router.get("/overview")
@@ -111,6 +112,13 @@ def get_performance(model: str) -> dict[str, Any]:
     return _ok(**cli.providers(model=model))
 
 
+@router.get("/composer/market")
+def get_composer_market(model: str = Query(min_length=1, max_length=200)) -> dict[str, Any]:
+    """Selected-model provider choices for the composer's TPS/price controls."""
+    cli, routing = _client_and_prefs()
+    return _ok(board=cli.seller_board(model=model.strip()), prefs=routing.load_prefs())
+
+
 @router.get("/prefs")
 def get_prefs() -> dict[str, Any]:
     """Current route preferences — the single source of truth shared with the agent."""
@@ -136,4 +144,6 @@ def set_prefs(patch: PrefsPatch) -> dict[str, Any]:
         current["default_route"] = data["default_route"]
     if "min_tps" in data:
         current["min_tps"] = data["min_tps"]
+    if "min_discount" in data:
+        current["min_discount"] = data["min_discount"]
     return _ok(action="set", prefs=routing.save_prefs(current))

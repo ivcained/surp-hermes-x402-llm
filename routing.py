@@ -22,6 +22,7 @@ DEFAULT_PREFS = {
     "mask_secrets": False,
     "default_route": None,  # surp combo id the user picked as their default route
     "min_tps": None,  # trailing-24h p50 floor for the current resolved model
+    "min_discount": 0,  # SI minimum estimated buyer discount vs external list price
 }
 
 _VALID_OBJECTIVES = ("price", "latency", "balanced")
@@ -92,6 +93,18 @@ def _sanitize(prefs: dict) -> dict:
         if not math.isfinite(min_tps) or min_tps < 0 or min_tps > 100000:
             raise ValueError("min_tps must be between 0 and 100000 tokens/second")
         clean["min_tps"] = min_tps
+    raw_discount = prefs.get("min_discount", 0)
+    if raw_discount in (None, ""):
+        raw_discount = 0
+    if isinstance(raw_discount, bool):
+        raise ValueError("min_discount must be an integer from 0 to 100")
+    try:
+        discount = float(raw_discount)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("min_discount must be an integer from 0 to 100") from exc
+    if not math.isfinite(discount) or discount < 0 or discount > 100 or not discount.is_integer():
+        raise ValueError("min_discount must be an integer from 0 to 100")
+    clean["min_discount"] = int(discount)
     return clean
 
 

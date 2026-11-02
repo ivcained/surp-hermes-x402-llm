@@ -92,7 +92,7 @@ class SurpClient:
         url = self.base_url + path
         if query:
             url += "?" + urlencode({k: v for k, v in query.items() if v is not None})
-        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.7.0"}
+        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.8.0"}
         if authenticated:
             headers["Authorization"] = f"Bearer {self.api_key}"
         if extra_headers:
@@ -162,6 +162,63 @@ class SurpClient:
             ]
             return {"count": len(rows), "providers": rows}
         return _with_tps_summary({"count": len(rows), "providers": rows})
+
+    def seller_board(self, *, model: str) -> dict[str, Any]:
+        """Cheapest and fastest provider choices for one model, with live discounts.
+
+        Prices and direct-list references come from the current order book. TPS,
+        TTFT and uptime are trailing-24h measurements when SI has them. Missing
+        performance data never hides the price/discount choices.
+        """
+        book = self.markets(model=model)
+        market = book.get("market") if isinstance(book.get("market"), dict) else book
+        market = market or {}
+        try:
+            performance = self.providers(model=market.get("model") or model)
+            performance_rows = performance.get("providers", [])
+            performance_error = None
+            average_tps = performance.get("average_tps")
+        except SurpError as exc:
+            performance_rows = []
+            performance_error = str(exc)
+            average_tps = None
+        perf = {
+            str(row.get("provider") or "").strip().lower(): row
+            for row in performance_rows
+            if isinstance(row, dict) and row.get("provider")
+        }
+        direct_total = sum(
+            float(market.get(key) or 0)
+            for key in ("direct_input_per_1m", "direct_output_per_1m")
+        )
+        rows = []
+        for source in market.get("providers") or book.get("providers") or []:
+            if not isinstance(source, dict) or not source.get("provider"):
+                continue
+            name = str(source["provider"]).strip().lower()
+            row = dict(source)
+            measured = perf.get(name) or {}
+            for key in ("tps_p50", "ttft_p50_ms", "uptime_pct"):
+                row[key] = measured.get(key)
+            price = _float_or_none(source.get("best_price_per_1m"))
+            row["price_usd_per_1m"] = price / 1_000_000 if price is not None else None
+            row["discount_pct"] = (
+                round(max(0.0, 100 * (1 - price / direct_total)), 2)
+                if price is not None and direct_total > 0 else None
+            )
+            rows.append(row)
+        cheapest = sorted(rows, key=lambda row: row["price_usd_per_1m"] if row["price_usd_per_1m"] is not None else float("inf"))
+        fastest = sorted(rows, key=lambda row: row["tps_p50"] if row["tps_p50"] is not None else -1, reverse=True)
+        return {
+            "model": market.get("model") or book.get("model") or model,
+            "providers": rows,
+            "cheapest": cheapest[:5],
+            "fastest": fastest[:5],
+            "average_tps": average_tps,
+            "best_discount_pct": market.get("best_discount_pct"),
+            "performance_error": performance_error,
+            "discount_basis": "estimated buyer discount vs direct input+output list prices",
+        }
 
     def jev_stats(self):
         """Jev routing telemetry: decisions, fallback rate, agreement rate, latency."""
@@ -290,6 +347,7 @@ class SurpClient:
         routing: dict[str, Any] | None = None,
         mask_secrets: bool = False,
         min_tps: float | None = None,
+        min_discount: int = 0,
         **options,
     ) -> dict[str, Any]:
         if not self.api_key:
@@ -333,7 +391,12 @@ class SurpClient:
             for key in ("providers_blocked", "provider_order", "si_route"):
                 if routing.get(key) is not None:
                     payload[key] = routing[key]
-        extra_headers = {"X-SI-Mask-Secrets": "on"} if mask_secrets else None
+        extra_headers = {"X-SI-Mask-Secrets": "on"} if mask_secrets else {}
+        discount = int(min_discount or 0)
+        if discount < 0 or discount > 100:
+            raise SurpError("min_discount must be an integer from 0 to 100")
+        if discount:
+            extra_headers["X-Min-Discount"] = str(discount)
         body, headers = self._call(
             "POST", "/v1/chat/completions", data=payload, authenticated=True, extra_headers=extra_headers
         )
@@ -350,6 +413,7 @@ class SurpClient:
             "secret_masking": headers.get("x-si-secret-masking"),
             "tps_routing": tps_routing,
             "routing_controls": routing or None,
+            "min_discount": discount,
         }
         return body
 

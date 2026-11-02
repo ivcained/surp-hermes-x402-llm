@@ -11,6 +11,8 @@
  * - Router view: the same preferences the surp_route_prefs tool owns —
  *   trusted-only, block/prefer, objective, secret masking — stored per
  *   profile and shared with the agent.
+ * - Composer actions: Fast TPS and Cheapest 5 sit immediately before the model
+ *   pill, follow its selected model, and edit the same shared route preferences.
  * - Default route: pick the combo the agent uses first (kept in plugin
  *   storage; the surp skill reads it before choosing a route).
  *
@@ -23,7 +25,7 @@
  * Only these imports resolve: @hermes/plugin-sdk, react, react/jsx-runtime.
  */
 
-import { cn, host, haptic, useValue, Tip, SearchField, Button, Switch, Badge, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, GlyphSpinner, EmptyState, ErrorState, PANES_AREA, ROUTES_AREA, SIDEBAR_NAV_AREA, PALETTE_AREA } from '@hermes/plugin-sdk'
+import { cn, host, haptic, useValue, Tip, SearchField, Button, Switch, Badge, SegmentedControl, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Popover, PopoverContent, PopoverTrigger, GlyphSpinner, EmptyState, ErrorState, PANES_AREA, ROUTES_AREA, SIDEBAR_NAV_AREA, PALETTE_AREA, COMPOSER_AREAS } from '@hermes/plugin-sdk'
 import React, { useState, useEffect, useCallback } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
@@ -38,6 +40,8 @@ const rowBetween = { display: 'flex', alignItems: 'center', justifyContent: 'spa
 const table = { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
 const cell = { textAlign: 'left', padding: '8px 6px', borderBottom: '1px solid var(--ui-stroke-secondary)', verticalAlign: 'top' }
 const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
+const composerTrigger = { height: 28, padding: '0 8px', borderRadius: 8, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-secondary)', cursor: 'pointer', font: 'inherit', fontSize: 13, whiteSpace: 'nowrap' }
+const providerRow = { width: '100%', display: 'grid', gridTemplateColumns: 'minmax(110px,1fr) auto', gap: 12, alignItems: 'center', textAlign: 'left', padding: 10, borderRadius: 10, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', cursor: 'pointer', font: 'inherit' }
 
 function useSurp(ctx, path, deps) {
   const [data, setData] = useState(null)
@@ -233,6 +237,7 @@ function RouterView({ ctx }) {
         { id: 'balanced', label: 'Balanced' }
       ] })
     ] }),
+    jsx('div', { style: card, children: jsx(PresetRow, { label: 'Minimum discount vs external list price', values: [0, 10, 25, 50, 75, 90], current: prefs.min_discount, suffix: '%', onPick: value => save({ min_discount: value }) }) }),
     jsx('div', { style: card, children: [
       jsx('h2', { style: { fontSize: 16, margin: 0 }, children: 'Blocked providers' }),
       jsx('p', { style: muted, children: (prefs.block_providers || []).length ? (prefs.block_providers || []).join(', ') : 'None — every provider is eligible.' }),
@@ -259,6 +264,89 @@ function BlockAdder({ ctx, onAdd, current }) {
   return jsxs('form', { onSubmit: submit, style: { display: 'flex', gap: 8 }, children: [
     jsx('input', { value: text, onChange: e => setText(e.target.value), placeholder: 'provider name, e.g. openrouter', 'aria-label': 'Provider name', style: { ...control, flex: 1 } }),
     jsx(Button, { type: 'submit', children: current.includes(text.trim().toLowerCase()) && text.trim() ? 'Remove' : 'Add' })
+  ] })
+}
+
+function ProviderChoice({ row, mode, current, onChoose }) {
+  const name = String(row.provider || '')
+  const price = row.price_usd_per_1m == null ? '—' : `$${Number(row.price_usd_per_1m).toFixed(4)}/1M`
+  const discount = row.discount_pct == null ? 'discount —' : `${row.discount_pct}% off`
+  const tps = row.tps_p50 == null ? 'TPS —' : `${row.tps_p50} TPS`
+  const reliability = `${row.ttft_p50_ms ?? '—'}ms TTFT · ${row.uptime_pct ?? '—'}% uptime`
+  return jsxs('button', { type: 'button', onClick: () => onChoose(name), style: providerRow, children: [
+    jsxs('span', { children: [
+      jsxs('strong', { children: [name, current ? ' ✓' : ''] }),
+      jsxs('span', { style: { ...muted, display: 'block' }, children: [`${row.trusted ? 'trusted' : 'untrusted'} · ${discount}`] })
+    ] }),
+    jsxs('span', { style: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' }, children: [
+      jsx('strong', { children: mode === 'tps' ? tps : price }),
+      jsx('span', { style: { ...muted, display: 'block' }, children: mode === 'tps' ? reliability : tps })
+    ] })
+  ] })
+}
+
+function PresetRow({ label, values, current, onPick, suffix = '' }) {
+  return jsxs('div', { style: { display: 'grid', gap: 8 }, children: [
+    jsx('span', { style: muted, children: label }),
+    jsx('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' }, children: values.map(value => jsx('button', {
+      type: 'button', onClick: () => onPick(value), style: { ...composerTrigger, color: Number(current || 0) === value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)' },
+      children: value === 0 ? 'Auto' : `${value}${suffix}`
+    }, value)) })
+  ] })
+}
+
+function ComposerMarketMenu({ ctx, kind }) {
+  const model = String(useValue(host.state.model) || '')
+  const [open, setOpen] = useState(false)
+  const path = open && model ? `/composer/market?model=${encodeURIComponent(model)}` : null
+  const [data, error, setData] = useSurp(ctx, path, [path])
+  useEffect(() => { setOpen(false) }, [model])
+  const ready = data && data.board && String(data.board.model).toLowerCase() === model.toLowerCase()
+  const board = ready ? data.board : null
+  const prefs = ready ? data.prefs : {}
+  const rows = board ? (kind === 'tps' ? board.fastest : board.cheapest) : []
+  const save = patch => ctx.rest('/prefs', { method: 'POST', body: patch }).then(value => {
+    if (value && value.prefs) setData(current => ({ ...current, prefs: value.prefs }))
+    return value
+  }, err => {
+    host.notify({ kind: 'error', message: `SURP preference was not saved: ${String((err && err.message) || err)}` })
+    return null
+  })
+  const choose = name => {
+    const blocked = (prefs.block_providers || []).filter(p => p !== name)
+    save({ prefer_providers: [name], block_providers: blocked }).then(value => { if (value) setOpen(false) })
+  }
+  const auto = () => save({ prefer_providers: [] }).then(value => { if (value) setOpen(false) })
+  const title = kind === 'tps' ? 'Fast TPS' : 'Cheapest 5'
+  return jsxs(Popover, { open, onOpenChange: setOpen, children: [
+    jsx(PopoverTrigger, { asChild: true, children: jsx('button', { type: 'button', disabled: !model, 'aria-label': kind === 'tps' ? 'Fast TPS' : 'Cheapest 5 providers', style: composerTrigger, children: title }) }),
+    open ? jsxs(PopoverContent, { side: 'top', align: 'end', variant: 'menu', style: { width: 430, maxWidth: 'calc(100vw - 32px)', maxHeight: 620, overflowY: 'auto', padding: 12 }, children: [
+      jsxs('div', { style: { display: 'grid', gap: 12 }, children: [
+        jsxs('div', { style: rowBetween, children: [
+          jsxs('div', { children: [
+            jsx('h2', { style: { fontSize: 16, margin: 0 }, children: title }),
+            jsx('p', { style: muted, children: model || 'No model selected' })
+          ] }),
+          jsx(Button, { onClick: auto, children: 'Auto provider' })
+        ] }),
+        board && board.best_discount_pct != null ? jsx('p', { style: muted, children: `Best live discount ${board.best_discount_pct}% · prices and discounts from the current order book` }) : null,
+        kind === 'tps' && board && board.average_tps != null ? jsx('p', { style: muted, children: `Average ${board.average_tps} TPS · trailing 24h` }) : null,
+        error ? jsx(ErrorState, { message: error }) : !ready ? jsx(GlyphSpinner, {}) : jsxs('div', { style: { display: 'grid', gap: 8 }, children: rows.map(row => jsx(ProviderChoice, {
+          row, mode: kind, current: (prefs.prefer_providers || [])[0] === row.provider, onChoose: choose
+        }, row.provider)) }),
+        board && board.performance_error ? jsx('p', { style: muted, children: 'TPS data is unavailable for this model. Price and discount choices remain live.' }) : null,
+        kind === 'tps' ? jsx(PresetRow, { label: 'Minimum TPS', values: [0, 25, 50, 100, 200], current: prefs.min_tps, suffix: ' TPS', onPick: value => save({ min_tps: value }) }) : jsx(PresetRow, { label: 'Minimum discount vs external list price', values: [0, 10, 25, 50, 75, 90], current: prefs.min_discount, suffix: '%', onPick: value => save({ min_discount: value }) }),
+        jsx('label', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 13, color: 'var(--ui-text-secondary)' }, children: ['Trusted providers only', jsx(Switch, { checked: !!prefs.trusted_only, onCheckedChange: value => save({ trusted_only: !!value }) })] }),
+        jsx('p', { style: muted, children: 'Changes apply to subsequent surp_chat requests. No inference is sent from this menu.' })
+      ] })
+    ] }) : null
+  ] })
+}
+
+function SurpComposerControls({ ctx }) {
+  return jsxs('div', { style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [
+    jsx(ComposerMarketMenu, { ctx, kind: 'tps' }),
+    jsx(ComposerMarketMenu, { ctx, kind: 'price' })
   ] })
 }
 
@@ -372,6 +460,7 @@ export default {
   register(ctx) {
     ctx.i18n.register({ en: { pageTitle: 'SURP Marketplace' } })
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: '/surp' }, render: () => jsx(SurpPage, { ctx }) })
+    ctx.register({ id: 'composer-actions', area: COMPOSER_AREAS.actions, render: () => jsx(SurpComposerControls, { ctx }) })
     ctx.register({ id: 'nav', area: SIDEBAR_NAV_AREA, data: { path: '/surp', label: 'SURP', codicon: 'graph' } })
     ctx.register({ id: 'open', area: PALETTE_AREA, data: { id: 'surp.open', label: 'SURP: open marketplace', keywords: ['surp', 'marketplace', 'prices', 'router'], run: () => host.navigate('/surp') } })
   }

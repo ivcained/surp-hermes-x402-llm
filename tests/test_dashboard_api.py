@@ -39,7 +39,7 @@ class DashboardApiTest(unittest.TestCase):
     def test_routes_are_mounted_where_the_page_calls_them(self):
         routes = sorted({r.path for r in self.api.router.routes})
         for expected in ("/overview", "/markets", "/markets/{model}", "/providers",
-                         "/performance/{model}", "/combos", "/prefs"):
+                         "/performance/{model}", "/composer/market", "/combos", "/prefs"):
             self.assertIn(expected, routes, f"missing backend route {expected}")
 
     def test_overview_bundles_markets_providers_and_prefs(self):
@@ -56,6 +56,13 @@ class DashboardApiTest(unittest.TestCase):
         model = markets["models"][0].get("model") or markets["models"][0].get("id")
         book = self.client.get(f"/markets/{model}").json()
         self.assertTrue(book["ok"])
+
+    def test_composer_market_returns_choices_and_shared_prefs(self):
+        body = self.client.get("/composer/market", params={"model": "openai-gpt-oss-120b"}).json()
+        self.assertTrue(body["ok"])
+        self.assertLessEqual(len(body["board"]["cheapest"]), 5)
+        self.assertLessEqual(len(body["board"]["fastest"]), 5)
+        self.assertIn("min_discount", body["prefs"])
 
     def test_page_and_tool_use_the_same_read_path(self):
         # The page's providers view and the agent's surp_providers tool call
@@ -74,12 +81,13 @@ class DashboardApiTest(unittest.TestCase):
         before = self._tool_prefs_before()
         try:
             patched = self.client.post("/prefs", json={
-                "trusted_only": True, "objective": "price", "default_route": "surp/jev", "min_tps": 50,
+                "trusted_only": True, "objective": "price", "default_route": "surp/jev", "min_tps": 50, "min_discount": 30,
             }).json()
             self.assertTrue(patched["ok"])
             self.assertTrue(patched["prefs"]["trusted_only"])
             self.assertEqual(patched["prefs"]["default_route"], "surp/jev")
             self.assertEqual(patched["prefs"]["min_tps"], 50)
+            self.assertEqual(patched["prefs"]["min_discount"], 30)
         finally:
             self.client.post("/prefs", json={
                 "trusted_only": before["trusted_only"],
@@ -87,6 +95,7 @@ class DashboardApiTest(unittest.TestCase):
                 "default_route": before["default_route"],
                 "mask_secrets": before["mask_secrets"],
                 "min_tps": before["min_tps"] or 0,
+                "min_discount": before["min_discount"],
             })
 
     def test_no_paid_endpoint_exists_on_the_backend(self):

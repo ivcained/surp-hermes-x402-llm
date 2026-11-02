@@ -29,17 +29,20 @@ The bundled `surp` skill teaches Hermes how to choose routes, quote before spend
   - `trusted_only` — route only to providers on Surplus Intelligence's trusted allowlist;
   - `block_providers` / `prefer_providers` — block specific providers or try preferred providers first;
   - `min_tps` — desired trailing-24h p50 TPS floor for the combo's currently resolved model. Slow and unmeasured current providers are excluded before payment; `0` clears the floor. If none qualify, the paid request is refused;
+  - `min_discount` — minimum estimated buyer discount versus external list price, forwarded as `X-Min-Discount`; `0` clears it. SI refuses the request when no seller meets the floor;
   - `objective` — `price`, `latency` or `balanced`;
   - `mask_secrets` — send `X-SI-Mask-Secrets: on` so secrets in the prompt (API keys, private keys, passwords) are replaced with placeholders before the request reaches the seller and restored in the response.
   
   Preferences are stored per profile under `$HERMES_HOME/cache/surp-hermes-x402-llm/route-prefs.json` and take effect on the next call — mid-conversation switching with no restart.
-- `surp_chat` accepts one-request overrides (`providers_blocked`, `provider_order`, `min_tps`, `si_objective`, `mask_secrets`) and reports what was applied in `surp.routing_applied`, plus settlement metadata: `surp.served_by`, `surp.failed_attempts`, `surp.buyer_cost_usd`, `surp.truncated`, `surp.secret_masking`.
+- `surp_chat` accepts one-request overrides (`providers_blocked`, `provider_order`, `min_tps`, `min_discount`, `si_objective`, `mask_secrets`) and reports what was applied in `surp.routing_applied`, plus settlement metadata: `surp.served_by`, `surp.failed_attempts`, `surp.buyer_cost_usd`, `surp.truncated`, `surp.secret_masking`.
 
 Provider preferences take effect on the next request, so you can switch to a faster provider mid-conversation. The plugin never migrates or blindly retries an in-flight paid response: that could duplicate spend. Surplus Intelligence exposes provider families rather than seller wallet identities, so switching happens at provider granularity with normal failover preserved.
 
 ## SURP desktop marketplace
 
 The opt-in desktop page adds a left-nav **SURP** destination with live prices, provider trust, per-model performance, and the same route preferences used by the agent. Its main window shows average TPS for the default route's currently resolved model and a desired-TPS floor editor. Open a model to compare provider TPS and choose **Use fastest next** or **Use next**; these buttons change the next request's provider preference, never an in-flight request. The page only drafts paid requests in chat, where the normal human spend-approval gate still applies.
+
+Two controls also render in `COMPOSER_AREAS.actions`, immediately before the model pill: **Fast TPS** and **Cheapest 5**. They follow the currently selected model and show the five fastest or cheapest providers with live discounts, price, trust, TPS, TTFT and uptime. Either menu can select a provider, restore automatic routing, or restrict trusted providers. Fast TPS includes minimum-TPS presets; Cheapest 5 includes minimum-discount presets. These controls update the same per-profile preferences as the agent tools and never send inference themselves.
 
 ## Install
 

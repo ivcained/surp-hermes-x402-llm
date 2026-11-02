@@ -1,5 +1,5 @@
 name: surp-hermes-x402-llm
-version: 0.7.0
+version: 0.8.0
 manifest_version: 2
 api_version: 1
 description: "Jev-integrated smart LLM routing for Hermes — live market prices for all models, trusted/untrusted seller switching mid-chat, per-provider TPS, secret masking, quotes, cache status, approval-gated paid chat, usage, decision-model route selection via TypeSafe Jev, and the SURP marketplace desktop page."
