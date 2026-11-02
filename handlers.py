@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 try:
@@ -138,6 +139,12 @@ def surp_chat_handler(args, **kwargs):
         mask_secrets = bool(prefs.get("mask_secrets"))
         if args.get("mask_secrets") is not None:
             mask_secrets = bool(args["mask_secrets"])
+        min_tps = prefs.get("min_tps")
+        if args.get("min_tps") is not None:
+            requested_floor = float(args["min_tps"])
+            if not math.isfinite(requested_floor) or requested_floor < 0:
+                raise client.SurpError("min_tps must be a non-negative finite number")
+            min_tps = requested_floor if requested_floor > 0 else None
         if prefs.get("trusted_only") and args.get("providers_blocked") is None:
             for name in _untrusted_providers(cli):
                 if name and name not in blocked:
@@ -156,9 +163,10 @@ def surp_chat_handler(args, **kwargs):
             max_spend_usd=args.get("max_spend_usd"),
             routing=routing or None,
             mask_secrets=mask_secrets,
+            min_tps=min_tps,
             **options,
         )
-        result["surp"]["routing_applied"] = routing or None
+        result["surp"]["routing_applied"] = result["surp"].pop("routing_controls", None)
         result["surp"]["mask_secrets"] = mask_secrets
         return result
 
@@ -210,6 +218,8 @@ def surp_route_prefs_handler(args, **kwargs):
             current["objective"] = args["objective"]
         if args.get("default_route") is not None:
             current["default_route"] = args["default_route"]
+        if args.get("min_tps") is not None:
+            current["min_tps"] = args["min_tps"]
         saved = route_prefs.save_prefs(current)
         # Drop the in-process provider cache so a trusted_only flip re-reads the catalog.
         _providers_cache["at"] = 0.0

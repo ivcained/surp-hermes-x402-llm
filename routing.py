@@ -9,6 +9,7 @@ controls (``providers_blocked``, ``provider_order``, ``si_route``) and the
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -20,6 +21,7 @@ DEFAULT_PREFS = {
     "objective": None,  # "price" | "latency" | "balanced" | None (router default)
     "mask_secrets": False,
     "default_route": None,  # surp combo id the user picked as their default route
+    "min_tps": None,  # trailing-24h p50 floor for the current resolved model
 }
 
 _VALID_OBJECTIVES = ("price", "latency", "balanced")
@@ -77,6 +79,19 @@ def _sanitize(prefs: dict) -> dict:
     clean["mask_secrets"] = bool(prefs.get("mask_secrets", False))
     route = prefs.get("default_route")
     clean["default_route"] = str(route).strip() if isinstance(route, str) and route.strip() else None
+    raw_min_tps = prefs.get("min_tps")
+    if raw_min_tps in (None, "", 0, "0"):
+        clean["min_tps"] = None
+    else:
+        if isinstance(raw_min_tps, bool):
+            raise ValueError("min_tps must be a non-negative number")
+        try:
+            min_tps = float(raw_min_tps)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("min_tps must be a non-negative number") from exc
+        if not math.isfinite(min_tps) or min_tps < 0 or min_tps > 100000:
+            raise ValueError("min_tps must be between 0 and 100000 tokens/second")
+        clean["min_tps"] = min_tps
     return clean
 
 

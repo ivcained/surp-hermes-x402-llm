@@ -62,6 +62,7 @@ SURP_CHAT = schema(
         "surp_mode": {"type": "string", "enum": ["cost", "value", "balanced", "speed", "intel"]},
         "providers_blocked": {"type": "array", "items": {"type": "string"}, "description": "One-request override: providers to block for this call only."},
         "provider_order": {"type": "array", "items": {"type": "string"}, "description": "One-request override: preferred provider order for this call only."},
+        "min_tps": {"type": "number", "minimum": 0, "maximum": 100000, "description": "One-request TPS floor for the combo's currently resolved model. Slow or unmeasured current providers are excluded before payment; 0 disables the floor."},
         "si_objective": {"type": "string", "enum": ["price", "latency", "balanced"], "description": "One-request override: router objective for this call only."},
         "mask_secrets": {"type": "boolean", "description": "One-request override: send X-SI-Mask-Secrets: on so secrets are masked before reaching the seller."},
     },
@@ -105,6 +106,7 @@ SURP_ROUTE_PREFS = schema(
     "providers (from surp_providers); block_providers/prefer_providers take provider names; objective picks the router's "
     "goal (price, latency, balanced); mask_secrets=true sends X-SI-Mask-Secrets on so secrets in the prompt are replaced "
     "with placeholders before reaching the seller; default_route sets the combo the agent uses when the user names none. "
+    "min_tps sets a trailing-24h p50 floor for the combo's currently resolved model (0 clears it), excluding slower or unmeasured current providers before payment. "
     "Set action=reset to return to defaults.",
     {
         "action": {"type": "string", "enum": ["get", "set", "reset"], "default": "get"},
@@ -114,6 +116,7 @@ SURP_ROUTE_PREFS = schema(
         "objective": {"type": "string", "enum": ["price", "latency", "balanced"]},
         "mask_secrets": {"type": "boolean"},
         "default_route": {"type": "string", "description": "Default surp combo id, e.g. surp/best-chat"},
+        "min_tps": {"type": "number", "minimum": 0, "maximum": 100000, "description": "Desired TPS floor for the current resolved model; 0 clears it."},
     },
 )
 

@@ -211,6 +211,8 @@ def test_providers_performance_for_one_model():
     c = client.SurpClient("https://surp.ivc.lol", transport=tx)
     result = c.providers(model="glm-5.3")
     assert result["providers"][0]["tps_p50"] == 55.1
+    assert result["average_tps"] == 55.1
+    assert result["tps_provider_count"] == 1
     assert tx.calls[0]["url"].endswith("/api/performance/glm-5.3")
 
 
@@ -367,3 +369,110 @@ def test_jev_stats_is_public_and_reports_routing_telemetry():
     assert result["jev_fallback_rate"] == 0.025
     assert result["jev_shadow_agreement_rate"] == 0.71
     assert result["jev_live_enabled"] is True
+
+
+def test_provider_average_tps_ignores_missing_samples():
+    tx = FakeTransport([response(body={"providers": [
+        {"provider": "fast", "tps_p50": 100},
+        {"provider": "medium", "tps_p50": 50},
+        {"provider": "unmeasured", "tps_p50": None},
+    ]})])
+    result = client.SurpClient("https://surp.ivc.lol", transport=tx).providers()
+    assert result["average_tps"] == 75
+    assert result["tps_provider_count"] == 2
+
+
+def test_min_tps_pref_round_trip_and_validation(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    saved = json.loads(handlers.surp_route_prefs_handler({"action": "set", "min_tps": 80}))
+    assert saved["ok"] is True
+    assert saved["prefs"]["min_tps"] == 80
+    assert json.loads(handlers.surp_route_prefs_handler({"action": "get"}))["prefs"]["min_tps"] == 80
+    cleared = json.loads(handlers.surp_route_prefs_handler({"action": "set", "min_tps": 0}))
+    assert cleared["prefs"]["min_tps"] is None
+    bad = json.loads(handlers.surp_route_prefs_handler({"action": "set", "min_tps": -1}))
+    assert bad["ok"] is False
+
+
+def test_negative_one_shot_tps_floor_is_refused_before_network(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    tx = FakeTransport([])
+    monkeypatch.setattr(handlers, "make_client", lambda: client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx))
+    result = json.loads(handlers.surp_chat_handler({
+        "model": "surp/best-chat", "messages": [{"role": "user", "content": "hi"}],
+        "confirm_spend": True, "min_tps": -1,
+    }))
+    assert result["ok"] is False
+    assert tx.calls == []
+
+
+def test_tps_floor_blocks_slow_and_unmeasured_providers_before_chat():
+    tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "resolved_model": "glm-5.3", "usd_per_1m_tokens": 0.03}]}),
+        response(body={"model": "glm-5.3", "providers": [
+            {"provider": "fast", "tps_p50": 120},
+            {"provider": "slow", "tps_p50": 20},
+            {"provider": "unmeasured", "tps_p50": None},
+        ]}),
+        response(body={"model": "glm-5.3", "market": {"providers": [
+            {"provider": "fast"}, {"provider": "slow"}, {"provider": "unmeasured"},
+        ]}}),
+        response(body={"choices": [{"message": {"content": "ok"}}]}),
+    ])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
+    result = c.chat(
+        model="surp/best-chat", messages=[{"role": "user", "content": "hi"}],
+        confirm_spend=True, min_tps=80,
+    )
+    sent = json.loads(tx.calls[-1]["body"])
+    assert sent["providers_blocked"] == ["slow", "unmeasured"]
+    assert result["surp"]["tps_routing"]["min_tps"] == 80
+    assert result["surp"]["tps_routing"]["eligible_providers"] == [{"provider": "fast", "tps_p50": 120}]
+
+
+def test_tps_floor_refuses_before_paid_call_when_no_provider_qualifies():
+    tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "resolved_model": "glm-5.3", "usd_per_1m_tokens": 0.03}]}),
+        response(body={"model": "glm-5.3", "providers": [
+            {"provider": "slow", "tps_p50": 20},
+            {"provider": "unmeasured", "tps_p50": None},
+        ]}),
+        response(body={"model": "glm-5.3", "market": {"providers": [
+            {"provider": "slow"}, {"provider": "unmeasured"},
+        ]}}),
+    ])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
+    with pytest.raises(client.TpsFloorUnavailable, match="no paid request was sent"):
+        c.chat(
+            model="surp/best-chat", messages=[{"role": "user", "content": "hi"}],
+            confirm_spend=True, min_tps=80,
+        )
+    assert not any(call["url"].endswith("/v1/chat/completions") for call in tx.calls)
+
+
+def test_tps_floor_respects_existing_provider_blocks():
+    tx = FakeTransport([
+        response(body={"combos": [{"combo": "surp/best-chat", "resolved_model": "glm-5.3", "usd_per_1m_tokens": 0.03}]}),
+        response(body={"model": "glm-5.3", "providers": [{"provider": "fast", "tps_p50": 120}]}),
+        response(body={"model": "glm-5.3", "market": {"providers": [{"provider": "fast"}]}}),
+    ])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
+    with pytest.raises(client.TpsFloorUnavailable):
+        c.chat(
+            model="surp/best-chat", messages=[{"role": "user", "content": "hi"}],
+            confirm_spend=True, min_tps=80, routing={"providers_blocked": ["fast"]},
+        )
+    assert not any(call["url"].endswith("/v1/chat/completions") for call in tx.calls)
+
+
+def test_tps_floor_refuses_custom_combo_without_a_single_resolved_model():
+    tx = FakeTransport([
+        response(body={"slug": "abc123", "pool": [{"usd_per_1m": 0.02}, {"usd_per_1m": 0.03}]}),
+    ])
+    c = client.SurpClient("https://surp.ivc.lol", api_key="surp_test", transport=tx)
+    with pytest.raises(client.SurpError, match="custom combos cannot be TPS-filtered safely"):
+        c.chat(
+            model="surp/my/abc123", messages=[{"role": "user", "content": "hi"}],
+            confirm_spend=True, min_tps=80,
+        )
+    assert not any(call["url"].endswith("/v1/chat/completions") for call in tx.calls)

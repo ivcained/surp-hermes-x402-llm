@@ -74,17 +74,19 @@ class DashboardApiTest(unittest.TestCase):
         before = self._tool_prefs_before()
         try:
             patched = self.client.post("/prefs", json={
-                "trusted_only": True, "objective": "price", "default_route": "surp/jev",
+                "trusted_only": True, "objective": "price", "default_route": "surp/jev", "min_tps": 50,
             }).json()
             self.assertTrue(patched["ok"])
             self.assertTrue(patched["prefs"]["trusted_only"])
             self.assertEqual(patched["prefs"]["default_route"], "surp/jev")
+            self.assertEqual(patched["prefs"]["min_tps"], 50)
         finally:
             self.client.post("/prefs", json={
                 "trusted_only": before["trusted_only"],
                 "objective": before["objective"],
                 "default_route": before["default_route"],
                 "mask_secrets": before["mask_secrets"],
+                "min_tps": before["min_tps"] or 0,
             })
 
     def test_no_paid_endpoint_exists_on_the_backend(self):

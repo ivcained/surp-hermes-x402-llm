@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 import os
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -24,6 +25,10 @@ class SpendConfirmationRequired(SurpError):
 
 
 class SpendLimitExceeded(SurpError):
+    pass
+
+
+class TpsFloorUnavailable(SurpError):
     pass
 
 
@@ -87,7 +92,7 @@ class SurpClient:
         url = self.base_url + path
         if query:
             url += "?" + urlencode({k: v for k, v in query.items() if v is not None})
-        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.5.0"}
+        headers = {"Accept": "application/json", "User-Agent": "surp-hermes-x402-llm/0.7.0"}
         if authenticated:
             headers["Authorization"] = f"Bearer {self.api_key}"
         if extra_headers:
@@ -146,7 +151,7 @@ class SurpClient:
         if model:
             clean = str(model).strip().lower()
             body, _ = self._call("GET", f"/api/performance/{clean}")
-            return body
+            return _with_tps_summary(body)
         body, _ = self._call("GET", "/api/providers")
         providers = body.get("providers", body if isinstance(body, list) else [])
         rows = [row for row in providers if isinstance(row, dict)]
@@ -155,7 +160,8 @@ class SurpClient:
                 {k: v for k, v in row.items() if k not in ("tps_p50", "tps", "avg_latency_ms", "uptime_pct")}
                 for row in rows
             ]
-        return {"count": len(rows), "providers": rows}
+            return {"count": len(rows), "providers": rows}
+        return _with_tps_summary({"count": len(rows), "providers": rows})
 
     def jev_stats(self):
         """Jev routing telemetry: decisions, fallback rate, agreement rate, latency."""
@@ -220,6 +226,60 @@ class SurpClient:
             raise SurpError(f"Cannot price custom combo {normalized}; refusing paid request")
         return max(0.01, max(prices) * max_tokens / 1_000_000 * 1.05)
 
+    def _routing_with_tps_floor(
+        self, routing: dict[str, Any] | None, min_tps: float, resolved_model: str
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Block current providers below the resolved model's trailing-24h p50 TPS.
+
+        This is a preference filter, not a throughput guarantee. It runs before
+        the paid request and never retries an in-flight request automatically.
+        """
+        floor = float(min_tps)
+        if not math.isfinite(floor) or floor <= 0:
+            raise SurpError("min_tps must be greater than 0 when enabled")
+        controls = dict(routing or {})
+        blocked = [str(p).strip().lower() for p in controls.get("providers_blocked", []) if str(p).strip()]
+        performance = self.providers(model=resolved_model)
+        performance_by_name = {
+            str(row.get("provider") or "").strip().lower(): row
+            for row in performance.get("providers", [])
+            if row.get("provider")
+        }
+        book = self.markets(model=resolved_model)
+        market = book.get("market") if isinstance(book.get("market"), dict) else book
+        market = market or {}
+        current_rows = market.get("providers") or book.get("offers") or []
+        current_names = {
+            str(row.get("provider") or "").strip().lower()
+            for row in current_rows
+            if isinstance(row, dict) and row.get("provider")
+        }
+        # Current offers decide eligibility; performance supplies the metric.
+        # If an older router omits the offer providers, use performance rows.
+        candidate_names = current_names or set(performance_by_name)
+        eligible = []
+        for name in sorted(candidate_names):
+            row = performance_by_name.get(name) or {}
+            tps = _float_or_none(row.get("tps_p50"))
+            if tps is not None and tps >= floor and name not in blocked:
+                eligible.append({"provider": name, "tps_p50": tps})
+            elif name not in blocked:
+                # Missing measurements do not qualify for a user-set floor.
+                blocked.append(name)
+        if not eligible:
+            raise TpsFloorUnavailable(
+                f"No current unblocked provider for {resolved_model} meets the {floor:g} TPS floor. "
+                "Lower or clear min_tps, or change trusted/blocked provider preferences; no paid request was sent."
+            )
+        controls["providers_blocked"] = blocked
+        eligible.sort(key=lambda row: row["tps_p50"], reverse=True)
+        return controls, {
+            "min_tps": floor,
+            "resolved_model": resolved_model,
+            "basis": "current providers for the quoted route, trailing-24h p50; missing/slower measurements excluded before payment",
+            "eligible_providers": eligible,
+        }
+
     def chat(
         self,
         *,
@@ -229,6 +289,7 @@ class SurpClient:
         max_spend_usd: float | None = None,
         routing: dict[str, Any] | None = None,
         mask_secrets: bool = False,
+        min_tps: float | None = None,
         **options,
     ) -> dict[str, Any]:
         if not self.api_key:
@@ -243,12 +304,27 @@ class SurpClient:
         # Surp prices a request up front from max_tokens, so pin it and refuse
         # before the paid call when that price is above the ceiling.
         options.setdefault("max_tokens", 1500)
-        estimate = self._estimate_usd(model, int(options["max_tokens"]))
+        normalized = model if model.startswith("surp/") else f"surp/{model}"
+        resolved_model = None
+        if normalized.startswith("surp/my/"):
+            estimate = self._estimate_usd(model, int(options["max_tokens"]))
+        else:
+            quote = self.quote(model=model, max_tokens=int(options["max_tokens"]))
+            estimate = float(quote["fresh_estimate_usd"])
+            resolved_model = quote.get("resolved_model")
         if estimate > ceiling:
             raise SpendLimitExceeded(
                 f"Estimated cost ${estimate:.4f} for max_tokens={options['max_tokens']} exceeds the "
                 f"${ceiling:.4f} per-request ceiling; the request was not sent (lower max_tokens)"
             )
+        tps_routing = None
+        if min_tps is not None:
+            if not resolved_model:
+                raise SurpError(
+                    "min_tps requires a built-in combo with a currently resolved model; "
+                    "custom combos cannot be TPS-filtered safely. No paid request was sent."
+                )
+            routing, tps_routing = self._routing_with_tps_floor(routing, min_tps, resolved_model)
         payload = {"model": model, "messages": messages, **options}
         if routing:
             # Surplus Intelligence routing controls: providers_blocked,
@@ -272,8 +348,25 @@ class SurpClient:
             "buyer_cost_usd": _micro_to_usd(headers.get("x-si-buyer-cost-micro")),
             "truncated": headers.get("x-si-truncated") == "1",
             "secret_masking": headers.get("x-si-secret-masking"),
+            "tps_routing": tps_routing,
+            "routing_controls": routing or None,
         }
         return body
+
+
+def _with_tps_summary(body: dict[str, Any]) -> dict[str, Any]:
+    """Add the arithmetic mean of reported provider p50 TPS values."""
+    result = dict(body)
+    rows = result.get("providers") or []
+    samples = [
+        value
+        for value in (_float_or_none(row.get("tps_p50")) for row in rows if isinstance(row, dict))
+        if value is not None
+    ]
+    result["average_tps"] = round(sum(samples) / len(samples), 1) if samples else None
+    result["tps_provider_count"] = len(samples)
+    result["tps_summary_basis"] = "arithmetic mean of provider p50 TPS measurements"
+    return result
 
 
 def _float_or_none(value):

@@ -8,8 +8,8 @@ It adds twelve tools:
 
 - `surp_models` — inspect live combos or models
 - `surp_markets` — current marketplace prices for all models (best price, sellers, volume; or one model's full order book)
-- `surp_providers` — every provider's trusted flag plus live TPS, TTFT, latency and uptime; per-model provider performance with `model`
-- `surp_route_prefs` — switch trusted/untrusted sellers, pin or block providers, set the routing objective, and turn secret masking on — mid-chat, without config edits
+- `surp_providers` — provider trust and market coverage; per-model TPS, TTFT, latency and uptime with `model`
+- `surp_route_prefs` — switch trusted/untrusted sellers, prefer or block providers, set a desired TPS floor and routing objective, and turn secret masking on — mid-chat, without config edits
 - `surp_quote` — estimate fresh inference and the exact-cache tier without spending
 - `surp_cache_status` — check cache eligibility and public cache metrics
 - `surp_chat` — guarded OpenAI-compatible chat using a Surp API key; applies routing preferences and secret masking automatically
@@ -24,15 +24,22 @@ The bundled `surp` skill teaches Hermes how to choose routes, quote before spend
 ## Marketplace visibility and seller switching
 
 - `surp_markets` (free, no key): every model's live best price, seller count and volume; pass a model id for its full order book — every offer with price, capacity remaining, health status and provider.
-- `surp_providers` (free, no key): the provider catalog with each provider's `trusted` flag and live throughput — TPS (p50), TTFT, latency and uptime. Pass a model for per-model rows.
+- `surp_providers` (free, no key): the provider catalog with each provider's `trusted` flag and live market coverage. Pass a model for per-model throughput — TPS (p50), TTFT, latency and uptime — plus the arithmetic mean of that model's reported provider TPS values.
 - `surp_route_prefs`: persistent per-profile routing preferences applied to every `surp_chat` call:
   - `trusted_only` — route only to providers on Surplus Intelligence's trusted allowlist;
-  - `block_providers` / `prefer_providers` — block or pin specific sellers;
+  - `block_providers` / `prefer_providers` — block specific providers or try preferred providers first;
+  - `min_tps` — desired trailing-24h p50 TPS floor for the combo's currently resolved model. Slow and unmeasured current providers are excluded before payment; `0` clears the floor. If none qualify, the paid request is refused;
   - `objective` — `price`, `latency` or `balanced`;
   - `mask_secrets` — send `X-SI-Mask-Secrets: on` so secrets in the prompt (API keys, private keys, passwords) are replaced with placeholders before the request reaches the seller and restored in the response.
   
   Preferences are stored per profile under `$HERMES_HOME/cache/surp-hermes-x402-llm/route-prefs.json` and take effect on the next call — mid-conversation switching with no restart.
-- `surp_chat` accepts one-request overrides (`providers_blocked`, `provider_order`, `si_objective`, `mask_secrets`) and reports what was applied in `surp.routing_applied`, plus settlement metadata: `surp.served_by`, `surp.failed_attempts`, `surp.buyer_cost_usd`, `surp.truncated`, `surp.secret_masking`.
+- `surp_chat` accepts one-request overrides (`providers_blocked`, `provider_order`, `min_tps`, `si_objective`, `mask_secrets`) and reports what was applied in `surp.routing_applied`, plus settlement metadata: `surp.served_by`, `surp.failed_attempts`, `surp.buyer_cost_usd`, `surp.truncated`, `surp.secret_masking`.
+
+Provider preferences take effect on the next request, so you can switch to a faster provider mid-conversation. The plugin never migrates or blindly retries an in-flight paid response: that could duplicate spend. Surplus Intelligence exposes provider families rather than seller wallet identities, so switching happens at provider granularity with normal failover preserved.
+
+## SURP desktop marketplace
+
+The opt-in desktop page adds a left-nav **SURP** destination with live prices, provider trust, per-model performance, and the same route preferences used by the agent. Its main window shows average TPS for the default route's currently resolved model and a desired-TPS floor editor. Open a model to compare provider TPS and choose **Use fastest next** or **Use next**; these buttons change the next request's provider preference, never an in-flight request. The page only drafts paid requests in chat, where the normal human spend-approval gate still applies.
 
 ## Install
 

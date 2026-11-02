@@ -1,7 +1,7 @@
 ---
 name: surp
 description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset, live market prices, trusted-seller switching and secret masking."
-version: 0.6.0
+version: 0.7.0
 author: ivcained
 license: MIT
 ---
@@ -23,7 +23,7 @@ Use this skill when the user asks Hermes to choose or call a Surp route, compare
 ## Market prices and provider speed
 
 - `surp_markets` (no key, free): every model's current best price, seller count and volume; pass `model` for that model's full order book with per-offer price, capacity, health and provider.
-- `surp_providers` (no key, free): every provider's trusted flag plus live TPS (tokens/second, p50), TTFT, latency and uptime; pass `model` for per-model provider performance.
+- `surp_providers` (no key, free): provider trust and market coverage; pass `model` for per-model TPS (tokens/second, p50), TTFT, latency, uptime and the mean reported provider TPS.
 
 Use `surp_markets` whenever the user asks what models cost right now, and `surp_providers` when they ask which provider is fastest or which sellers are trusted.
 
@@ -37,8 +37,11 @@ Use `surp_markets` whenever the user asks what models cost right now, and `surp_
 - `objective` — `price`, `latency`, or `balanced` for the router's goal.
 - `mask_secrets: true` — send `X-SI-Mask-Secrets: on` so secrets in the prompt are replaced with placeholders before the request reaches the seller, then restored in the response.
 - `default_route` — the surp combo used when the user names none (e.g. `surp/best-chat`). The SURP page's default-route picker edits this same value.
+- `min_tps` — desired trailing-24h p50 TPS floor for the combo's currently resolved model. Slow and unmeasured current providers are blocked before payment; `0` clears the floor. If no provider qualifies, do not loosen it silently: report the refusal and ask the user. Custom combos cannot be TPS-filtered safely because they have no single resolved model.
 
-`action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent.
+`action=get` reads current prefs, `action=reset` restores defaults. For a single request, `surp_chat` accepts `providers_blocked`, `provider_order`, `min_tps`, `si_objective` and `mask_secrets` as one-shot overrides. The response's `surp.routing_applied` shows exactly which controls were sent, and `surp.tps_routing` records the floor, resolved model and eligible providers.
+
+Provider preferences and floors apply to the next request. Never claim to have moved an in-flight response to another seller, and never retry a paid request blindly to make switching appear seamless.
 
 ## Choosing routes
 

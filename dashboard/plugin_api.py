@@ -64,6 +64,7 @@ class PrefsPatch(BaseModel):
     objective: str | None = None
     mask_secrets: bool | None = None
     default_route: str | None = None
+    min_tps: float | None = Field(default=None, ge=0, le=100000)
 
 
 @router.get("/overview")
@@ -133,4 +134,6 @@ def set_prefs(patch: PrefsPatch) -> dict[str, Any]:
         current["objective"] = data["objective"]
     if data.get("default_route"):
         current["default_route"] = data["default_route"]
+    if "min_tps" in data:
+        current["min_tps"] = data["min_tps"]
     return _ok(action="set", prefs=routing.save_prefs(current))

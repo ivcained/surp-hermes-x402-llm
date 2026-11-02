@@ -62,17 +62,20 @@ function usdPer1m(micro) {
   return '$' + per1m.toFixed(4)
 }
 
-function MarketsView({ ctx }) {
+function MarketsView({ ctx, onUseProvider }) {
   const [query, setQuery] = useState('')
   const [detail, setDetail] = useState(null)
-  const [markets, error] = useSurp(ctx, '/markets?limit=500', [])
+  const [markets, error] = useSurp(ctx, '/markets?limit=500&sort=sellers&dir=desc', [])
   const [book, bookError] = useSurp(ctx, detail ? `/markets/${encodeURIComponent(detail)}` : null, [detail])
+  const [performance, performanceError] = useSurp(ctx, detail ? `/performance/${encodeURIComponent(detail)}` : null, [detail])
   if (error) return jsx(ErrorState, { message: error })
   if (!markets) return jsx(GlyphSpinner, {})
-  const rows = (markets.models || []).filter(r => {
+  const rows = (markets.models || []).slice().sort((a, b) => (Number(b.seller_count || b.num_sellers || b.healthy_seller_count || 0)) - (Number(a.seller_count || a.num_sellers || a.healthy_seller_count || 0))).filter(r => {
     const id = String(r.model || r.id || '')
     return !query || id.toLowerCase().includes(query.toLowerCase())
   })
+  const perfRows = ((performance && performance.providers) || []).slice().sort((a, b) => (Number(b.tps_p50) || 0) - (Number(a.tps_p50) || 0))
+  const fastest = perfRows.find(p => p.tps_p50 !== null && Number.isFinite(Number(p.tps_p50)))
   return jsxs('div', { style: { display: 'grid', gap: 16 }, children: [
     jsx('div', { style: rowBetween, children: [
       jsx('p', { style: muted, children: `${markets.count} models · live Surplus Intelligence prices` }),
@@ -88,7 +91,7 @@ function MarketsView({ ctx }) {
       jsx('tbody', { children: rows.slice(0, 100).map(r => {
         const id = String(r.model || r.id || '')
         return jsx('tr', { key: id, children: [
-          jsx('td', { style: cell, children: jsx('button', { type: 'button', onClick: () => { haptic('tap'); setDetail(id) }, style: { background: 'none', border: 'none', padding: 0, color: 'var(--ui-accent)', cursor: 'pointer', font: 'inherit' }, children: id }) }),
+          jsx('td', { style: cell, children: jsx('button', { type: 'button', onClick: () => { haptic('tap'); setDetail(id) }, style: { background: 'none', border: 'none', padding: '8px', color: 'var(--ui-accent)', cursor: 'pointer', font: 'inherit' }, children: id }) }),
           jsx('td', { style: num, children: usdPer1m(r.best_price_per_1m ?? r.best_input_per_1m) }),
           jsx('td', { style: num, children: r.seller_count ?? r.num_sellers ?? r.healthy_seller_count ?? '—' }),
           jsx('td', { style: num, children: r.volume_24h !== undefined && r.volume_24h !== null ? '$' + Number(r.volume_24h).toFixed(0) : '—' })
@@ -99,6 +102,28 @@ function MarketsView({ ctx }) {
       jsx('div', { style: rowBetween, children: [
         jsx('h2', { style: { fontSize: 16, margin: 0 }, children: detail }),
         jsx('button', { type: 'button', onClick: () => setDetail(null), style: { ...control, width: 'auto', minHeight: 0, padding: '6px 10px', cursor: 'pointer' }, children: 'Close' })
+      ] }),
+      performanceError ? jsx(ErrorState, { message: performanceError }) : !performance ? jsx(GlyphSpinner, {}) : jsxs('div', { style: { display: 'grid', gap: 10 }, children: [
+        jsx('div', { style: rowBetween, children: [
+          jsx('p', { style: muted, children: `Average ${performance.average_tps ?? '—'} TPS across ${performance.tps_provider_count || 0} measured providers · trailing 24h` }),
+          fastest ? jsx(Button, { onClick: () => onUseProvider(String(fastest.provider || '')), children: `Use fastest next: ${fastest.provider}` }) : null
+        ] }),
+        jsx('div', { style: { overflowX: 'auto' }, children: jsx('table', { style: table, children: [
+          jsx('thead', { children: jsx('tr', { children: [
+            jsx('th', { style: cell, children: 'Provider' }),
+            jsx('th', { style: num, children: 'TPS p50' }),
+            jsx('th', { style: num, children: 'TTFT ms' }),
+            jsx('th', { style: num, children: 'Uptime' }),
+            jsx('th', { style: num, children: 'Next request' })
+          ] }) }),
+          jsx('tbody', { children: perfRows.map(p => jsx('tr', { key: p.provider, children: [
+            jsx('td', { style: cell, children: p.provider }),
+            jsx('td', { style: num, children: p.tps_p50 ?? '—' }),
+            jsx('td', { style: num, children: p.ttft_p50_ms ?? '—' }),
+            jsx('td', { style: num, children: p.uptime_pct == null ? '—' : `${p.uptime_pct}%` }),
+            jsx('td', { style: num, children: jsx(Button, { onClick: () => onUseProvider(String(p.provider || '')), children: 'Use next' }) })
+          ] })) })
+        ] }) })
       ] }),
       bookError ? jsx(ErrorState, { message: bookError }) : !book ? jsx(GlyphSpinner, {}) :
         jsx('div', { style: { overflowX: 'auto' }, children: jsx('table', { style: table, children: [
@@ -119,34 +144,34 @@ function MarketsView({ ctx }) {
   ] })
 }
 
-function ProvidersView({ ctx }) {
+function ProvidersView({ ctx, onUseProvider }) {
   const [trustedOnly, setTrustedOnly] = useState(false)
   const [providers, error] = useSurp(ctx, '/providers', [])
   if (error) return jsx(ErrorState, { message: error })
   if (!providers) return jsx(GlyphSpinner, {})
   const rows = (providers.providers || []).filter(p => !trustedOnly || p.trusted)
-  const sorted = [...rows].sort((a, b) => (b.tps_p50 || 0) - (a.tps_p50 || 0))
+  const sorted = [...rows].sort((a, b) => Number((b.market && b.market.healthy_sellers) || 0) - Number((a.market && a.market.healthy_sellers) || 0))
   return jsxs('div', { style: { display: 'grid', gap: 16 }, children: [
     jsx('div', { style: rowBetween, children: [
-      jsx('p', { style: muted, children: `${rows.length} providers · sorted by TPS (p50)` }),
+      jsx('p', { style: muted, children: `${rows.length} providers · trust and live market coverage. Open a model for per-model TPS.` }),
       jsx('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ui-text-secondary)' }, children: ['Trusted only', jsx(Switch, { checked: trustedOnly, onCheckedChange: setTrustedOnly })] })
     ] }),
     jsx('div', { style: { overflowX: 'auto' }, children: jsx('table', { style: table, children: [
       jsx('thead', { children: jsx('tr', { children: [
         jsx('th', { style: cell, children: 'Provider' }),
-        jsx('th', { style: num, children: 'TPS' }),
-        jsx('th', { style: num, children: 'TTFT ms' }),
-        jsx('th', { style: num, children: 'Uptime' }),
-        jsx('th', { style: cell, children: 'Trust' })
+        jsx('th', { style: num, children: 'Healthy sellers' }),
+        jsx('th', { style: num, children: 'Models' }),
+        jsx('th', { style: cell, children: 'Trust' }),
+        jsx('th', { style: num, children: 'Next request' })
       ] }) }),
       jsx('tbody', { children: sorted.map(p => {
         const id = String(p.provider || p.id || p.name || '')
         return jsx('tr', { key: id, children: [
           jsx('td', { style: cell, children: id }),
-          jsx('td', { style: num, children: p.tps_p50 !== undefined && p.tps_p50 !== null ? Number(p.tps_p50).toFixed(1) : '—' }),
-          jsx('td', { style: num, children: p.ttft_p50_ms !== undefined && p.ttft_p50_ms !== null ? Math.round(Number(p.ttft_p50_ms)) : '—' }),
-          jsx('td', { style: num, children: p.uptime_pct !== undefined && p.uptime_pct !== null ? Number(p.uptime_pct).toFixed(1) + '%' : '—' }),
-          jsx('td', { style: cell, children: p.trusted ? jsx(Badge, { children: 'trusted' }) : jsx('span', { style: { color: 'var(--ui-text-tertiary)' }, children: 'untrusted' }) })
+          jsx('td', { style: num, children: (p.market && p.market.healthy_sellers) ?? '—' }),
+          jsx('td', { style: num, children: (p.market && p.market.models) ?? '—' }),
+          jsx('td', { style: cell, children: p.trusted ? jsx(Badge, { children: 'trusted' }) : jsx('span', { style: { color: 'var(--ui-text-tertiary)' }, children: 'untrusted' }) }),
+          jsx('td', { style: num, children: jsx(Button, { onClick: () => onUseProvider(id), children: 'Use next' }) })
         ] })
       }) })
     ] }) })
@@ -239,13 +264,51 @@ function BlockAdder({ ctx, onAdd, current }) {
 
 function SurpPage({ ctx }) {
   const [tab, setTab] = useState('markets')
-  const [prefsData, prefsError] = useSurp(ctx, '/prefs', [])
+  const [prefsData, prefsError, setPrefsData] = useSurp(ctx, '/prefs', [])
   const [combosData] = useSurp(ctx, '/combos', [])
   const routes = (combosData && combosData.combos ? combosData.combos.map(c => String(c.combo || c.id || '')).filter(Boolean) : ['surp/best-chat', 'surp/best-coding', 'surp/best-reasoning', 'surp/jev'])
   const [snapshot, setSnapshot] = useState(null)
+  const [minTps, setMinTps] = useState('')
+  const [routeNote, setRouteNote] = useState(null)
   useEffect(() => {
-    if (prefsData && prefsData.prefs) setSnapshot(prefsData.prefs.default_route || 'surp/best-chat')
+    if (prefsData && prefsData.prefs) {
+      setSnapshot(prefsData.prefs.default_route || 'surp/best-chat')
+      setMinTps(prefsData.prefs.min_tps == null ? '' : String(prefsData.prefs.min_tps))
+    }
   }, [prefsData])
+  const activeCombo = ((combosData && combosData.combos) || []).find(c => String(c.combo || c.id || '') === snapshot)
+  const resolvedModel = activeCombo && (activeCombo.resolved_model || activeCombo.routes_to_now)
+  const [routePerformance] = useSurp(ctx, resolvedModel ? `/performance/${encodeURIComponent(resolvedModel)}` : null, [resolvedModel])
+  const updatePrefs = (patch, note) => {
+    setRouteNote('Saving…')
+    return ctx.rest('/prefs', { method: 'POST', body: patch }).then(
+      value => {
+        if (value && value.prefs) setPrefsData(value)
+        setRouteNote(note)
+        return value
+      },
+      err => { setRouteNote(`Could not save: ${String((err && err.message) || err)}`); return null }
+    )
+  }
+  const useProvider = name => {
+    if (!name) return
+    const blocked = ((prefsData && prefsData.prefs && prefsData.prefs.block_providers) || []).filter(p => p !== name)
+    updatePrefs(
+      { prefer_providers: [name], block_providers: blocked },
+      `${name} is saved as the first choice for the next surp_chat request, subject to trust and TPS filters. Other providers remain available for failover.`
+    )
+  }
+  const saveMinTps = event => {
+    event.preventDefault()
+    const value = minTps.trim() === '' ? 0 : Number(minTps)
+    if (!Number.isFinite(value) || value < 0 || value > 100000) {
+      setRouteNote('TPS floor must be between 0 and 100000.')
+      return
+    }
+    updatePrefs({ min_tps: value }, value > 0
+      ? `Saved ${value} TPS floor. Slower and unmeasured providers will be excluded before the next paid request.`
+      : 'TPS floor cleared. All otherwise eligible providers can serve the next request.')
+  }
   const [draftNote, setDraftNote] = useState(null)
   const pickDefault = value => {
     setSnapshot(value)
@@ -275,7 +338,24 @@ function SurpPage({ ctx }) {
         jsx(SelectContent, { children: routes.map(m => jsx(SelectItem, { value: m, children: m }, m)) })
       ] }) : jsx(GlyphSpinner, {})] })
     ] }),
-    tab === 'markets' ? jsx(MarketsView, { ctx }) : tab === 'providers' ? jsx(ProvidersView, { ctx }) : jsx(RouterView, { ctx }),
+    jsxs('section', { style: card, children: [
+      jsx('div', { style: rowBetween, children: [
+        jsxs('div', { children: [
+          jsx('h2', { style: { fontSize: 16, margin: 0 }, children: 'Provider speed' }),
+          jsx('p', { style: muted, children: `${resolvedModel || 'Current route'} · average provider p50, trailing 24h. A routing signal, not a guarantee.` })
+        ] }),
+        jsx('strong', { style: { fontSize: 24, fontVariantNumeric: 'tabular-nums' }, children: routePerformance && routePerformance.average_tps != null ? `${routePerformance.average_tps} TPS` : '—' })
+      ] }),
+      jsxs('form', { onSubmit: saveMinTps, style: { display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }, children: [
+        jsxs('label', { style: { ...field, minWidth: 220 }, children: [
+          'Desired minimum TPS (0 clears)',
+          jsx('input', { type: 'number', min: 0, max: 100000, step: 'any', value: minTps, onChange: e => setMinTps(e.target.value), 'aria-label': 'Desired minimum TPS', style: control })
+        ] }),
+        jsx(Button, { type: 'submit', children: 'Save TPS floor' })
+      ] }),
+      routeNote ? jsx('p', { role: 'status', 'aria-live': 'polite', style: muted, children: routeNote }) : null
+    ] }),
+    tab === 'markets' ? jsx(MarketsView, { ctx, onUseProvider: useProvider }) : tab === 'providers' ? jsx(ProvidersView, { ctx, onUseProvider: useProvider }) : jsx(RouterView, { ctx }),
     tab === 'markets' ? jsx('div', { style: card, children: [
       jsx('h2', { style: { fontSize: 16, margin: 0 }, children: 'Send via the agent' }),
       jsx('p', { style: muted, children: 'Paid requests are never sent from this page. The button below drafts a surp request in the chat composer — you review it, you send it, and the spend-approval prompt fires before anything is paid.' }),
