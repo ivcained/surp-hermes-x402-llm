@@ -3,7 +3,7 @@
   "label": "SURP",
   "description": "Live Surplus Intelligence marketplace: every model's current price, per-provider TPS and trusted flags, mid-chat seller switching, and the default-router picker. Read-only; sending always goes through the chat agent with the spend-approval gate.",
   "icon": "Graph",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "tab": {
     "path": "/surp",
     "position": "after:skills"

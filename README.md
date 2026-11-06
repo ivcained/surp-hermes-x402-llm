@@ -103,7 +103,7 @@ Use `surp_cache_status` before explaining a likely hit. Eligibility is not a gua
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -e '.[test]'
+pip install pytest
 pytest -q
 hermes plugins doctor . --ci
 ```

@@ -1,7 +1,7 @@
 ---
 name: surp
 description: "Use Surp for cheap, cache-aware LLM requests through Hermes, with Jev decision-model routing via the surp/jev preset, live market prices, trusted-seller switching and secret masking."
-version: 0.8.0
+version: 0.8.1
 author: ivcained
 license: MIT
 ---

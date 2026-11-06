@@ -1,10 +1,6 @@
-[build-system]
-requires = ["setuptools>=75,<82"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "surp-hermes-x402-llm"
-version = "0.8.0"
+version = "0.8.1"
 description = "Jev-integrated smart LLM routing tools for Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,12 +14,6 @@ classifiers = [
 [project.urls]
 Homepage = "https://surp.ivc.lol"
 Repository = "https://github.com/ivcained/surp-hermes-x402-llm"
-
-[project.optional-dependencies]
-test = ["pytest>=8,<10"]
-
-[tool.setuptools]
-py-modules = ["client", "handlers", "schemas"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
